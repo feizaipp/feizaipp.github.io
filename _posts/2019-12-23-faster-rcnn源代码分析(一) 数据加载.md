@@ -69,6 +69,7 @@ data_transform = {
 
 # 4. 数据解析
 &#160; &#160; &#160; &#160;数据加载的实现在 VOC2012DataSet 类中。
+
 &#160; &#160; &#160; &#160;init 函数，有三个参数：
 * voc_root: 数据集所在目录
 * transforms: 数据预处理接口
@@ -100,6 +101,7 @@ class VOC2012DataSet(Dataset):
         self.transforms = transforms
 ```
 &#160; &#160; &#160; &#160;init函数主要是根据划分好的数据集加载每一张图像的标注文件，并将标注文件的路径保存到 self.xml_list 变量中。
+
 &#160; &#160; &#160; &#160;加载 pascal_voc_classes.json 文件，该文件存储着每种类别对应的标签，并保存到 self.class_dict 变量中，以字典的形式存储。
 
 &#160; &#160; &#160; &#160;实现 __len__ 函数，让实例类对象支持 len 方法，返回数据集的长度。
@@ -196,6 +198,7 @@ train_data_set = VOC2012DataSet(VOC_root, data_transform["train"], True)
 * batch_size: 批处理大小，根据自己的硬件设备实际情况而定
 * num_workers: 加载数据线程数
 * collate_fn: 如何取样本，我们可以定义自己的函数来准确地实现想要的功能，因为读取的数据包括image和targets，不能直接使用默认的方法合成batch
+
 ```
 train_data_loader = torch.utils.data.DataLoader(train_data_set,
                                                     batch_size=1,
