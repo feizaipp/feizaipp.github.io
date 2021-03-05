@@ -30,7 +30,7 @@ tags:
 &#160; &#160; &#160; &#160;bottom-up 是前馈网络的一部分，每一层向上使用 stride=2 对图像数据下采样，如上图左侧所示。
 
 ## 2.2 top-down and lateral connections
-&#160; &#160; &#160; &#160;这一部分是自顶向下通过上采样（最近邻插值法）的方式将顶层的小特征图放大到上一个 stage 的特征图一样的大小。最近邻值插值法，可以在上采样的过程中最大程度地保留特征图的语义信息(有利于分类)，从而与 bottom-up 过程中相应的具有丰富的空间信息(高分辨率，有利于定位)的特征图进行融合，从而得到既有良好的空间信息又有较强烈的语义信息的特征图。然后在通过 lateral connections 网络将 bottom-up 和 top-down 的特征值进行拼接在一起，作为一个预测特征层，如上图右侧所示。
+&#160; &#160; &#160; &#160;这一部分是自顶向下通过上采样（最近邻插值法）的方式将顶层的小特征图放大到上一个 stage 的特征图一样的大小。最近邻插值法，可以在上采样的过程中最大程度地保留特征图的语义信息(有利于分类)，从而与 bottom-up 过程中相应的具有丰富的空间信息(高分辨率，有利于定位)的特征图进行融合，从而得到既有良好的空间信息又有较强烈的语义信息的特征图。然后在通过 lateral connections 网络将 bottom-up 和 top-down 的特征值进行拼接在一起，作为一个预测特征层，如上图右侧所示。
 
 # 3. 代码实现
 &#160; &#160; &#160; &#160;首先创建 ResNet 网络作为骨干网络，并声明用于作为预测特征层的层。
@@ -66,7 +66,7 @@ class BackboneWithFPN(nn.Module):
         return x
 ```
 
-&#160; &#160; &#160; &#160;IntermediateLayerGetter 类的作用是收集主干网络 (resnet-50) 的 layer4 层之前的各个，之后的层舍弃。在前向传播 forward 过程中收集 layer1 、 layer2 、 layer3 、 layer4 的输出作为预测特征层。前向传播返回的是一个 OrderedDict ，健为初始化时传入的参数 return_layers 字典的值，值为主干网络前向传播后的特征层。
+&#160; &#160; &#160; &#160;IntermediateLayerGetter 类的作用是收集主干网络 (resnet-50) 的 layer4 层之前的各个岑层，之后的层舍弃。在前向传播 forward 过程中收集 layer1 、 layer2 、 layer3 、 layer4 的输出作为预测特征层。前向传播返回的是一个 OrderedDict ，健为初始化时传入的参数 return_layers 字典的值，值为主干网络前向传播后的特征层。
 ```
 class IntermediateLayerGetter(nn.ModuleDict):
     __annotations__ = {
@@ -107,7 +107,7 @@ class IntermediateLayerGetter(nn.ModuleDict):
 
 &#160; &#160; &#160; &#160;接下来看 FeaturePyramidNetwork 类，首先看 init 函数：
 
-&#160; &#160; &#160; &#160;init 函数中由两个重要的变量 inner_block_module 和 layer_block_module ，其中 inner_block_module 是 lateral connections ，用于与上采样的特征进行对应元素相加。元素相加时要保证特征有着相同的维度、高度和宽度，通过 1x1 卷积层调整维度。相加后后的特征通过 layer_blocks 3x3 的卷积层，用于减轻最近邻近插值带来的混叠影响，输出作为预测特征层。
+&#160; &#160; &#160; &#160;init 函数中由两个重要的变量 inner_block_module 和 layer_block_module ，其中 inner_block_module 是 1x1 卷积层 ，元素相加时要保证特征有着相同的维度、高度和宽度，通过 1x1 卷积层调整维度。相加后后的特征通过 layer_blocks 3x3 的卷积层，用于减轻最近邻近插值带来的混叠影响，输出作为预测特征层。
 
 &#160; &#160; &#160; &#160;extra_blocks 是最大池化层 max_pool2d 。
 ```
@@ -134,9 +134,9 @@ def __init__(self, in_channels_list, out_channels, extra_blocks=None):
 
 &#160; &#160; &#160; &#160;下面看下两个接口 get_result_from_inner_blocks 和 get_result_from_layer_blocks ：
 
-&#160; &#160; &#160; &#160;get_result_from_inner_blocks 相当于 self.inner_blocks[idx](x) 。
+&#160; &#160; &#160; &#160;get_result_from_inner_blocks 相当于 self.inner_blocks[idx] (x) ，执行 1x1 卷积调整维度。
 
-&#160; &#160; &#160; &#160;get_result_from_layer_blocks 相当于 self.layer_blocks[idx](x) 。
+&#160; &#160; &#160; &#160;get_result_from_layer_blocks 相当于 self.layer_blocks[idx] (x) ，执行 3x3 卷积进行特征融合。
 ```
 def get_result_from_inner_blocks(self, x, idx):
     # type: (Tensor, int)

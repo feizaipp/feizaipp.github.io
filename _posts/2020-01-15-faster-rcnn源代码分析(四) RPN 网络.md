@@ -15,7 +15,7 @@ tags:
 > [我的博客](http://feizaipp.github.io)
 
 # 1. 概述
-&#160; &#160; &#160; &#160;本篇文章介绍 RPN 网络，相比于 Fast-RCNN 网络， RPN 网络是 Faster-RCNN 最重要的改进之一。使用 RPN 结构生成候选框，将 RPN 生成的候选框投影到特征图上获得相应的特征矩阵。对于特征图上的每个 3x3 的滑动窗口，计算出滑动窗口中心点对应原始图像上的中心点，并计算出 k 个 anchor boxes 。 RPN 网络框架图下图所示：
+&#160; &#160; &#160; &#160;本篇文章介绍 RPN 网络，相比于 Fast-RCNN 网络， RPN 网络是 Faster-RCNN 最重要的改进之一。使用 RPN 结构生成候选框，将 RPN 生成的候选框投影到特征图上获得相应的特征矩阵。对于特征图上的每个 3x3 的滑动窗口，计算出滑动窗口中心点对应原始图像上的中心点，并计算出 k 个 anchor boxes 。 RPN 网络框架图如下图所示：
 
 ![RPN 网络结构](/img/RPN-Struct.jpg)
 
@@ -53,6 +53,7 @@ anchor_sizes = ((32,), (64,), (128,), (256,), (512,))
 aspect_ratios = ((0.5, 1.0, 2.0),) * len(anchor_sizes)
 rpn_anchor_generator = AnchorsGenerator(anchor_sizes, aspect_ratios)
 ```
+
 &#160; &#160; &#160; &#160;用来生成 RPN 预测网络:
 ```
 rpn_head = RPNHead(out_channels, rpn_anchor_generator.num_anchors_per_location()[0])
@@ -92,13 +93,14 @@ def __init__(self, sizes=(128, 256, 512), aspect_ratios=(0.5, 1.0, 2.0)):
         self.cell_anchors = None
         self._cache = {}
 ```
+
 &#160; &#160; &#160; &#160;AnchorsGenerator 前向传播函数。参数是一个批量的图像数据和批量预测特征图。
 * grid_sizes: 保存每一个预测特征图的尺寸
 * image_size: 保存图像的尺寸
 * strides: 保存原始图像与每一层预测特征图的宽度和高度的比值
 * self.set_cell_anchors: 该函数用来生成 Anchors 模板， Anchors 的生成是使用模板在预测特征图上的映射
 * self.cached_grid_anchors: 该函数生成每个预测特征层对应的 Anchors ，保存到 anchors_over_all_feature_maps 中。
-* anchors: 遍历每一张图片，为每一张图片将所有的 anchors 拼接在一起。
+* anchors: 遍历每一张图片，将所有的 anchors 拼接在一起。
 ```
 def forward(self, image_list, feature_maps):
     # type: (ImageList, List[Tensor])
@@ -138,6 +140,7 @@ def forward(self, image_list, feature_maps):
     self._cache.clear()
     return anchors
 ```
+
 &#160; &#160; &#160; &#160;如果 self.cell_anchors 不是 None ，则直接返回；否则调用 generate_anchors 去生成 Anchors ，保存到 self.cell_anchors 。
 ```
 def set_cell_anchors(self, dtype, device):
@@ -158,6 +161,7 @@ def set_cell_anchors(self, dtype, device):
     ]
     self.cell_anchors = cell_anchors
 ```
+
 &#160; &#160; &#160; &#160;生成 Anchors 模板，模板都是以 (0,0) 坐标为中心。
 * h_ratios: aspect_ratios 的平方根，这么做的目的就是为了保证不同高宽比下生成的 Anchors 面积接近。
 * w_ratios: 1/h_ratios
@@ -193,6 +197,7 @@ def generate_anchors(self, scales, aspect_ratios, dtype=torch.float32, device="c
 
     return base_anchors.round()  # round 四舍五入
 ```
+
 &#160; &#160; &#160; &#160;cached_grid_anchors 函数用来生成所有 Anchors ，如果 self._cache 变量中已经存在则直接返回。 否则调用 self.grid_anchors 生成 Anchors ，并更新 self._cache 。
 ```
 def cached_grid_anchors(self, grid_sizes, strides):
@@ -206,6 +211,7 @@ def cached_grid_anchors(self, grid_sizes, strides):
     self._cache[key] = anchors
     return anchors
 ```
+
 &#160; &#160; &#160; &#160;grid_anchors 函数遍历每一个预测特征层的大小、原图与预测特征层的步距、 Anchors 模板生成所有 Anchors 。生成的 Anchors 是基于原图的，所以首先要将特征图映射到原图， shifts_x 和 shifts_y 保存的是原图尺寸的网格点，间隔为 stride 特征图压缩比例。使用 meshgrid 函数生成坐标矩阵。 坐标矩阵 X 、 Y 每一位置对应的元素可组成一个在原图上的坐标，即 Anchors 的中心点。坐标矩阵有如下特点： X 的每一行都一样， Y 的每一列都一样。
 
 &#160; &#160; &#160; &#160;将 shifts_x 和 shifts_y 展平后，使用 stack 组合成坐标点，再加上 Anchors 模板就得到了该特征层对应的所有 Anchors 了。
@@ -254,6 +260,7 @@ def grid_anchors(self, grid_sizes, strides):
 
     return anchors  # List[Tensor(all_num_anchors, 4)]
 ```
+
 &#160; &#160; &#160; &#160;计算每个预测特征层上每个滑动窗口的预测目标数。
 ```
 def num_anchors_per_location(self):
@@ -263,7 +270,7 @@ def num_anchors_per_location(self):
 # 3. RPNHead
 &#160; &#160; &#160; &#160;根据 RPN 网络框架图可知，主干网络输出的预测特征层首先经过 3x3 滑动窗口，然后分两条分支，一条分支通过 1x1 卷积，输出维度为 num_anchors(Anchors 大小)，用来预测该 Anchors 是否包含物体；另一条分支通过 1x1 卷积，输出维度为 num_anchors*4(每个 Anchors 的预测偏移量) 。
 * in_channels: RPNHead 网络的输入通道数，传入值为主干网络输出的通道数
-* num_anchors:
+* num_anchors: 每一个像素点 anchor 的个数
 ```
 def __init__(self, in_channels, num_anchors):
     super(RPNHead, self).__init__()
@@ -279,6 +286,7 @@ def __init__(self, in_channels, num_anchors):
             torch.nn.init.normal_(layer.weight, std=0.01)
             torch.nn.init.constant_(layer.bias, 0)
 ```
+
 &#160; &#160; &#160; &#160;前向传播网络用来计算 logits 和 bbox_reg ，并返回给后续网络做处理。
 ```
 def forward(self, x):
@@ -343,14 +351,17 @@ class RegionProposalNetwork(torch.nn.Module):
         self.nms_thresh = nms_thresh
         self.min_size = 1e-3
 ```
+
 &#160; &#160; &#160; &#160;RegionProposalNetwork 的前向传播网络，
 * 使用 RPN 预测网络预测每个预测特征层每个 Anchors 的类别以及边界框回归参数；
 * 对每个预测特征图生成对应原图的 Anchors ；
-* 计算每个预测特征层上 Anchors 的个数，每个像素点生成 3 个 Anchors ，每个预测特征图生成的 Anchros 个数为 height*width*3；
+* 计算每个预测特征层上 Anchors 的个数，每个像素点生成 3 个 Anchors ，每个预测特征图生成的 Anchros 个数为 height x width x 3；
 * 使用 concat_box_prediction_layers 函数对 box_cls 和 box_regression 两个 tensor 的排列顺序以及 shape 进行调整，经过 concat_box_prediction_layers 函数后， box_cls 和 box_regression 两个 tensor 的形状为 (-1, 1) 和 (-1, 4) 。
 * self.box_coder.decode: 将预测的 pred_bbox_deltas 参数应用到 anchors 上得到最终预测 bbox 坐标，并对该坐标进行 reshape 成 (num_images, -1, 4) 得到 proposals
 * self.filter_proposals: 筛除小 boxes 框，进行 nms 处理，根据预测概率获取前 post_nms_top_n 个目标
-* 如果是训练模式，self.assign_targets_to_anchors: 计算每个 anchors 最匹配的 gt ，并将 anchors 进行分类，前景，背景以及废弃的 anchors ；self.box_coder.encode: 根据 anchors 的最佳匹配的 gt 和 anchors 计算边界框回归目标； self.compute_loss: 计算分类损失和边界框回归损失。
+* 如果是训练模式，self.assign_targets_to_anchors: 计算每个 anchors 最匹配的 gt ，并将 anchors 进行分类，前景，背景以及废弃的 anchors
+* self.box_coder.encode: 根据 anchors 的最佳匹配的 gt 和 anchors 计算边界框回归目标
+* self.compute_loss: 计算分类损失和边界框回归损失。
 * 返回 rpn 网络生成的边界框 box 和损失
 ```
 def forward(self, images, features, targets=None):
@@ -405,6 +416,7 @@ def forward(self, images, features, targets=None):
             }
         return boxes, losses
 ```
+
 &#160; &#160; &#160; &#160;遍历每一个预测特征层的 box_cls 和 box_regression ，将每个预测特征层的类别预测和边界框回归预测值全部收集到一起，并 reshape 成 [N, 1] 和 [N, 4] 的形式。 permute_and_flatten 的作用是调整 tensor 顺序，并进行 reshape 。
 ```
 def concat_box_prediction_layers(box_cls, box_regression):
@@ -450,6 +462,7 @@ def permute_and_flatten(layer, N, A, C, H, W):
     layer = layer.reshape(N, -1, C)
     return layer
 ```
+
 &#160; &#160; &#160; &#160;filter_proposals 函数用来筛选预选框。
 * objectness: 对 objectness 进行 reshape 到 (num_images, -1)
 * levels 负责记录分隔不同预测特征层上的 anchors 索引信息，torch.full((n,), idx) 用来生成一个 (n,) 维的张量，每个值都为 idx
@@ -517,6 +530,7 @@ def filter_proposals(self, proposals, objectness, image_shapes, num_anchors_per_
         final_scores.append(scores)
     return final_boxes, final_scores
 ```
+
 &#160; &#160; &#160; &#160;获取每张预测特征图上预测概率排前 pre_nms_top_n 的 anchors 索引值。
 * objectness.split(num_anchors_per_level, 1): 在维度 1 上将 objectness 按每个预测特征图的 anchors 数划分。
 * pre_nms_top_n: nms 处理前保留的 proposals 个数
@@ -595,6 +609,7 @@ def assign_targets_to_anchors(self, anchors, targets):
         matched_gt_boxes.append(matched_gt_boxes_per_image)
     return labels, matched_gt_boxes
 ```
+
 &#160; &#160; &#160; &#160;计算 RPN 损失，包括类别损失（前景与背景）， bbox regression 损失。
 * self.fg_bg_sampler: 平衡正负样本，选取 256 个样本，正样本比例为 50% 。遍历每张图像的 matched_idxs ，如果正样本不够就采用所有正样本，如果负样本不够直接采用所有负样本。随机选择指定数量的正负样本 。 sampled_pos_inds 和 sampled_neg_inds 最终存储的是每一个 batch 中的所有正负样本分别拼接到一起。
 * sampled_inds: 将所有正负样本拼接到一起，保存的是一个 batch 中所有正负样本的索引。
@@ -660,6 +675,7 @@ def clip_boxes_to_image(boxes, size):
     clipped_boxes = torch.stack((boxes_x, boxes_y), dim=dim)
     return clipped_boxes.reshape(boxes.shape)
 ```
+
 &#160; &#160; &#160; &#160;remove_small_boxes 函数移除宽高小于指定阈值的索引。
 * nonzero 函数用于得到 tensor 中非零元素的位置，
 ```
@@ -682,6 +698,7 @@ def remove_small_boxes(boxes, min_size):
     keep = keep.nonzero().squeeze(1)
     return keep
 ```
+
 &#160; &#160; &#160; &#160;batched_nms 函数对每一张图像的每一个预测特征层的边界框进行极大值抑制。
 * boxes.max() 获取所有 boxes 中最大的坐标值
 * offsets: 为每一个类别生成一个很大的偏移量， 这里的 to 只是让生成 tensor 的 dytpe 和 device 与 boxes 保持一致。
@@ -711,6 +728,7 @@ def batched_nms(boxes, scores, idxs, iou_threshold):
     keep = nms(boxes_for_nms, scores, iou_threshold)
     return keep
 ```
+
 &#160; &#160; &#160; &#160;box_iou 函数用来计算两个边界框的交并比。 iou = 边界框的交集 / 别解框的并集。边界框框的交集 = 左上角较大点的坐标与右下角较小点的左边之间的面积；边界框的并集 = 两个边界框的面积和 - 边界框的交集。
 ```
 def box_iou(boxes1, boxes2):
@@ -729,6 +747,7 @@ def box_iou(boxes1, boxes2):
     iou = inter / (area1[:, None] + area2 - inter)
     return iou
 ```
+
 &#160; &#160; &#160; &#160;下面介绍 det_utils 文件里的函数。
 &#160; &#160; &#160; &#160;BalancedPositiveNegativeSampler 类，用来平衡正负样本， init 函数初始化每张图片保留的正负样本总数和正样本所占的比例。
 ```
@@ -791,6 +810,7 @@ def __call__(self, matched_idxs):
 
     return pos_idx, neg_idx
 ```
+
 &#160; &#160; &#160; &#160;下面介绍 BoxCoder 类，该类用来计算边界框回归参数。
 
 &#160; &#160; &#160; &#160;init 函数初始化 self.weights 和 self.bbox_xform_clip 属性， self.weights 用来设置边界框回归参数的权重，默认是 1 ； self.bbox_xform_clip 用来限制边界框的宽和高为 0 的情况出现，默认取一个最大值。
@@ -801,6 +821,7 @@ def __init__(self, weights, bbox_xform_clip=math.log(1000. / 16)):
     self.weights = weights
     self.bbox_xform_clip = bbox_xform_clip
 ```
+
 &#160; &#160; &#160; &#160;encode 函数用来计算训练回归参数的标签。
 * 首先将 reference_boxes 和 proposals 两个张量在维度 0 上进行拼接
 * 调用 encode_single 函数计算 reference_boxes 和 proposals 之间的边界框回归参数，作为训练标签
@@ -819,6 +840,7 @@ def encode(self, reference_boxes, proposals):
     targets = self.encode_single(reference_boxes, proposals)
     return targets.split(boxes_per_image, 0)
 ```
+
 &#160; &#160; &#160; &#160;调用 encode_boxes 函数计算边界框回归参数。
 ```
 def encode_single(self, reference_boxes, proposals):
@@ -830,6 +852,7 @@ def encode_single(self, reference_boxes, proposals):
 
     return targets
 ```
+
 &#160; &#160; &#160; &#160;边界框回归涉及到两个方面的训练，中心点坐标和宽高的比例。中心点坐标使用平移的方式即可得到；宽高通过尺度的缩放得到。
 
 &#160; &#160; &#160; &#160;公式一：边界框回归参数分别为 dx , dy , dw , dh ， Px ， Py ， Pw ， Ph 分别为候选框的中心坐标以及宽高。 G^x ， G^y ， G^w ， G^h 分别为最终预测的边界框中心坐标以及宽高。得到如下公式：
@@ -837,11 +860,13 @@ def encode_single(self, reference_boxes, proposals):
 * G^y = Ph * dy(P)+Py
 * G^w = Pw * exp(dw(P))
 * G^h = Ph * exp(dh(P))
+
 &#160; &#160; &#160; &#160;公式二：根据上面公式即可计算得到边界框回归参数如下：
 * tx = (Gx−Px)/Pw
 * ty = (Gy−Py)/Ph
 * tw = log(Gw/Pw)
 * th = log(Gh/Ph)
+
 &#160; &#160; &#160; &#160;encode_boxes 函数实现了公式二。
 ```
 def encode_boxes(reference_boxes, proposals, weights):
@@ -886,6 +911,7 @@ def encode_boxes(reference_boxes, proposals, weights):
     targets = torch.cat((targets_dx, targets_dy, targets_dw, targets_dh), dim=1)
     return targets
 ```
+
 &#160; &#160; &#160; &#160;decode 函数根据网络输出的边界框回归参数得到边界框的中心点坐标和宽高。
 ```
 def decode(self, rel_codes, boxes):
@@ -907,6 +933,7 @@ def decode(self, rel_codes, boxes):
     )
     return pred_boxes.reshape(box_sum, -1, 4)
 ```
+
 &#160; &#160; &#160; &#160;调用 decode_single 计算边界框的中心点坐标和宽高，计算公式如上公式一。
 ```
 def decode_single(self, rel_codes, boxes):
@@ -961,6 +988,7 @@ def __init__(self, high_threshold, low_threshold, allow_low_quality_matches=Fals
     self.low_threshold = low_threshold
     self.allow_low_quality_matches = allow_low_quality_matches
 ```
+
 &#160; &#160; &#160; &#160;call 函数对所有 Anchors 划分正负样本和丢弃样本。
 * 计算每一个 Anchors 对应的最大 IOU 的 gt box ，将 IOU 最大值和 anchors 的索引保存到 matched_vals 和 matches 两个变量中。
 * 因为以上可能漏掉某些 gt box ，所以先将 matches 克隆一份，保存到 all_matches 中，进行后续处理
@@ -1000,6 +1028,7 @@ def __call__(self, match_quality_matrix):
 
     return matches
 ```
+
 &#160; &#160; &#160; &#160;set_low_quality_matches_ 函数，计算每个 gt boxes 寻找与其 iou 最大的 anchor 。
 * 将最大 IOU 值保存到 highest_quality_foreach_gt 中
 * 寻找每个 gt box 与其 iou 最大的 anchors 的索引，一个 gt 匹配到最大 iou 可能有多个 anchors
@@ -1051,4 +1080,5 @@ def smooth_l1_loss(input, target, beta: float = 1. / 9, size_average: bool = Tru
         return loss.mean()
     return loss.sum()
 ```
+
 &#160; &#160; &#160; &#160;RPN 网络就先写道这里了，网络结构还是清晰明了的，就是这过程中张量的变换太烧脑。

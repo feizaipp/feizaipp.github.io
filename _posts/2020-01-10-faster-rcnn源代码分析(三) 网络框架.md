@@ -25,12 +25,12 @@ model = FasterRCNN(backbone=backbone, num_classes=91)
 
 &#160; &#160; &#160; &#160;FasterRCNN 类的 init 函数中，主要创建了 RPN 网络和 ROI 网络，具体创建过程请看下一章节。
 
-&#160; &#160; &#160; &#160;forword 函数在子类中创建。该函数执行整个网络的各个子模块。
+&#160; &#160; &#160; &#160;forword 函数在子类中实现。该函数执行整个网络的各个子模块。
 * self.transform: 对输入的批量图像进行预处理
 * self.backbone: 将图像输入到主干网络进行特征提取
 * self.rpn: 将特征层以及标注 target 信息传入 rpn 中
 * self.roi_heads: 将 rpn 生成的数据以及标注 target 信息传入 ROI 网络中
-* self.transform.postprocess: 对网络的预测结果进行后处理，主要将bboxes还原到原图像尺度上
+* self.transform.postprocess: 对网络的输出结果进行后处理，主要将 bboxes 还原到原图像尺度上
 ```
 def forward(self, images, targets=None):
     # type: (List[Tensor], Optional[List[Dict[str, Tensor]]])
@@ -95,7 +95,7 @@ aspect_ratios = ((0.5, 1.0, 2.0),) * len(anchor_sizes)
 rpn_anchor_generator = AnchorsGenerator(anchor_sizes, aspect_ratios)
 ```
 
-&#160; &#160; &#160; &#160;RPN 预测网络实现代码如下所示，预测网络中主要包括类别与预测(前景或背景)，以及边界框回归参数预测。
+&#160; &#160; &#160; &#160;RPN 预测网络实现代码如下所示，预测网络中主要包括类别预测(前景或背景)，以及边界框回归参数预测。
 ```
 rpn_head = RPNHead(out_channels, rpn_anchor_generator.num_anchors_per_location()[0])
 ```
@@ -115,7 +115,7 @@ rpn = RegionProposalNetwork(
 * rpn_batch_size_per_image: 采样的样本数
 * rpn_positive_fraction: 正样本占总样本的比例
 * rpn_pre_nms_top_n: rpn 中在 nms 处理前保留的 proposal 个数，这是每个预测特征层保留 proposal 的个数
-* rpn_post_nms_top_n: rpn 中在 nms 处理前保留的 proposal 个数，这是每张图片总共保留的 proposal 的个数
+* rpn_post_nms_top_n: rpn 中在 nms 处理后保留的 proposal 个数，这是每张图片总共保留的 proposal 的个数
 * rpn_nms_thresh: rpn 中进行 nms 处理时使用的iou阈值
 
 ## 2.2. ROI 网络
@@ -220,6 +220,7 @@ def forward(self, images, targets=None):
     image_list = ImageList(images, image_sizes_list)
     return image_list, targets
 ```
+
 &#160; &#160; &#160; &#160;接下来介绍 normalize 函数。
 * 首先将 self.image_mean 和 self.image_std 转化成 tensor 类型
 * 将图片的每一个像素减去均值后再除以标准差
@@ -276,6 +277,7 @@ def resize(self, image, target):
 
     return image, target
 ```
+
 &#160; &#160; &#160; &#160;resize_boxes 对 target 进行缩放。
 * 输入参数分别分要缩放的 target 、原始图像的大小、缩放后的图像的大小
 * ratios: 记录宽高的缩放比例，用缩放后的图片的除以原始图片
