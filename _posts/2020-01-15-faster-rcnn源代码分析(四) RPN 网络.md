@@ -420,6 +420,9 @@ def forward(self, images, features, targets=None):
 &#160; &#160; &#160; &#160;遍历每一个预测特征层的 box_cls 和 box_regression ，将每个预测特征层的类别预测和边界框回归预测值全部收集到一起，并 reshape 成 [N, 1] 和 [N, 4] 的形式。 permute_and_flatten 的作用是调整 tensor 顺序，并进行 reshape 。
 
 &#160; &#160; &#160; &#160;这里先疏理一下一个 batch 的数据维度是如何变化的，这里假设 batch_size 的大小是 2 ，那么输入数据的维度为 [2, 3, h, w] ；经过主干特征提取网络后数据的格式变为 [2, 256, f_h, f_w] ，这里需要注意，由于我们使用的是带 FPN 的特征提取网络，所以有多少个特征层就有多少个这样的结构，每个特征层的 f_h 和 f_w 值不同，最后所有层的数据格式存储在链表里；这些特征经过 rpn 网络后，得到的数据格式为 objectness 是 [2, 3, f_h, f_w] ， pred_bbox_deltas 是 [2, 12, f_h, f_w] ，其中 objectness 中的 3 表示 3 个 anchor ，由于 rpn 网络只预测前景和背景，所以是 3x1 ， pred_bbox_deltas 中的 12 表示 3 个 anchor ，每个 anchor 预测 4 个边界框参数，所以是 3x4 ，这里也是每个特征层的 f_h 和 f_w 值不同，所有层的数据格式存储在链表里；
+
+* 函数最终返回的是一个 batch 中所有 anchor 预测的类别以及边界框回归参数，格式分别为 [N, 1] 和 [N, 4] ，其中 N 为一个 batch 中所有的 anchor 数。
+* flatten(0, -2): 展平，起始维度是 0 ，结束维度是 -2
 ```
 def concat_box_prediction_layers(box_cls, box_regression):
     # type: (List[Tensor], List[Tensor])
@@ -465,11 +468,12 @@ def permute_and_flatten(layer, N, A, C, H, W):
     return layer
 ```
 
-&#160; &#160; &#160; &#160;filter_proposals 函数用来筛选预选框。
+&#160; &#160; &#160; &#160;filter_proposals 函数用来筛选预选框。函数输入 proposals 形状为 [num_images, -1, 4] ， objectness 形状为 [N, 1] 。
+
 * objectness: 对 objectness 进行 reshape 到 (num_images, -1)
 * levels 负责记录选中的预测值在哪个层上，torch.full((n,), idx) 用来生成一个 (n,) 维的张量，每个值都为 idx
 * 将 levels reshape 到 (-1, 1) 并 扩展到与 objectness 相同的形状。
-* self._get_top_n_idx: 获取每个 batch 上预测概率排前 pre_nms_top_n 的 anchors 索引值，返回的数据形状为 [2, n] 。
+* self._get_top_n_idx: 获取每个 batch 上预测概率排前 pre_nms_top_n 的 anchors 索引值，返回的数据形状为 [2, n] 。每一个预测特征层选取最多 2000 个预测值。
 * image_range = torch.arange(num_images, device=device): 根据 batch_size 生成 image_range
 * batch_idx = image_range[:, None]: 对 image_range 升维得到 batch_idx ，用于二维数组的索引定位
 * objectness = objectness[batch_idx, top_n_idx]: 根据索引获取每一张图片的类别信息。
@@ -479,8 +483,8 @@ def permute_and_flatten(layer, N, A, C, H, W):
 * box_ops.remove_small_boxes: 移除宽高小于指定阈值的索引
 * boxes[keep], scores[keep], lvl[keep]: 筛选出满足条件的数据
 * box_ops.batched_nms: 对每一张图像的每一个预测特征层的边界框进行极大值抑制
-* keep[: self.post_nms_top_n()]: 获取前 post_nms_top_n 个预选框和类别分数
-
+* keep[: self.post_nms_top_n()]: 获取每一张图片前 post_nms_top_n 个预选框和类别分数
+* 函数最终返回筛选过的预测类别和边界框，形状分别为 [2000, 1] 和 [2000, 4] ，这是一张图片的返回数据，一个 batch 的图像添加到链表里返回。
 ```
 def filter_proposals(self, proposals, objectness, image_shapes, num_anchors_per_level):
     # type: (Tensor, Tensor, List[Tuple[int, int]], List[int])
@@ -534,11 +538,12 @@ def filter_proposals(self, proposals, objectness, image_shapes, num_anchors_per_
 ```
 
 &#160; &#160; &#160; &#160;获取每张预测特征图上预测概率排前 pre_nms_top_n 的 anchors 索引值。
+
+* 输入 objectness 的形状为： [batchsize, N] ， N 为每张图像中所有的 anchor 数。
 * objectness.split(num_anchors_per_level, 1): 在维度 1 上将 objectness 按每个预测特征图的 anchors 数划分。
 * pre_nms_top_n: nms 处理前保留的 proposals 个数
-* ob.topk(pre_nms_top_n, dim=1): 选取当前预测特征层，前 pre_nms_top_n 个 objectness 的索引。
-* torch.cat(r, dim=1): 将每一层所选取的 objectness 的索引拼接到一起。
-
+* ob.topk(pre_nms_top_n, dim=1): 选取当前预测特征层，前 pre_nms_top_n 个 objectness 的索引。注意，这里返回的形状为 [2, 2000] ，因为 ob 是二维的，且这里设置的 dim=1 。
+* torch.cat(r, dim=1): 将每一层所选取的 objectness 的索引拼接到一起。最终返回的维度是 [2, 8578]
 ```
 def _get_top_n_idx(self, objectness, num_anchors_per_level):
     # type: (Tensor, List[int])
@@ -559,20 +564,20 @@ def _get_top_n_idx(self, objectness, num_anchors_per_level):
     return torch.cat(r, dim=1)
 ```
 
-&#160; &#160; &#160; &#160;assign_targets_to_anchors 函数计算每个 anchors 最匹配的 gt ，并划分为正样本，背景以及废弃的样本。
-* 传入参数分别是一个批量数据的所有 anchors 和标注信息。
+&#160; &#160; &#160; &#160;assign_targets_to_anchors 函数计算每个 anchors 最匹配的 gt ，并划分为正样本，背景以及废弃的样本。正负样本选取规则是 anchor 与 gt 的 iou 大与 0.7 作为正样本，小于 0.3 作为负样本，在 [0.3, 0.7] 之间的丢弃；对于与 gt box 有最大 iou 的 anchor 也设为正样本，即使该 iou 小于 0.3 。
+
+* 传入参数分别是一个批量数据的所有 anchors (维度为 [N, 4])和标注信息(字典结构)。每一个 batch 的图片的信息以列表形式存储。
 * 遍历一个批量数据中的每一张图片，分别取出每一张图片对应的 anchors 和标注信息。
 * gt_boxes: 保存的是真实物体的边界框信息。
-* box_ops.box_iou: 计算图片中的每一个 anchors 与真实 bbox 的 iou 信息
-* self.proposal_matcher: 计算每个 anchors 与 gt 匹配 iou 最大值对应的索引，iou 小于 low_threshold 的索引置为 -1 ， iou 在 [low_threshold, high_threshold] 之间的索引置为 -2 ；计算每个 gt boxes 与其 iou 最大的 anchor ，一个 gt 匹配到的最大 iou 可能有多个 anchor ， 保留该 anchor 匹配 gt 最大 iou 的索引，即使 iou 低于设定的阈值。
-* matched_gt_boxes_per_image: 保存每一个 Anchors 对应的 gt boxes ，将那些负样本和不参与训练的样本的 Anchors 的 gt boxes 默认设为了 gt_boxes[0] 。
-* labels_per_image: 该变量设置每一个 Anchors 的标签。将 matched_idxs > 0 的，也就是正样本的索引，设置为 True
+* box_ops.box_iou: 计算图片中的真实 bbox 与每一个 anchors 的 iou 。返回值的形状为 [n, A] ，其中 n 为这张图片 gt 的个数， A 为这张图片总共生成的 anchor 大小。
+* self.proposal_matcher: 计算每个 anchors 与 gt 匹配 iou 最大值对应的索引，iou 小于 low_threshold 的索引置为 -1 ， iou 在 [low_threshold, high_threshold] 之间的索引置为 -2 ；计算每个 gt boxes 与其 iou 最大的 anchor ，保留该 anchor 匹配 gt 最大 iou 的索引，即使 iou 低于设定的阈值。
+* matched_gt_boxes_per_image: 保存每一个 Anchors 对应的 gt boxes ，将那些负样本和不参与训练的样本的 Anchors 的 gt boxes 默认设为了 gt_boxes[0] ，在计算损失时会根据 labels_per_image 值进行区分正负样本和丢弃样本。
+* labels_per_image: 该变量设置每一个 Anchors 的标签。将 matched_idxs >= 0 的，也就是正样本的索引，设置为 True
 * bg_indices: 是背景的索引，设置为 True
 * labels_per_image[bg_indices]: 将 bg_indices 对应为 True 设置为 0 ，表示负样本
 * inds_to_discard: 不参与训练的索引，设置为 True
 * labels_per_image[inds_to_discard]: 将 inds_to_discard 对应为 True 设置为 -1 ，表示该样本不参与训练
-* 函数返回两个值，一个是 Anchors 是正样本还是负样本的标签，以及样本对应的 gt boxes 边界框。
-
+* 函数返回两个值，一个是 Anchors 是正样本还是负样本的标签，以及样本对应的 gt boxes 边界框。返回的是一个列表，列表中的每一项代表一张图像的数据。
 ```
 def assign_targets_to_anchors(self, anchors, targets):
     # type: (List[Tensor], List[Dict[str, Tensor]])
@@ -613,12 +618,13 @@ def assign_targets_to_anchors(self, anchors, targets):
 ```
 
 &#160; &#160; &#160; &#160;计算 RPN 损失，包括类别损失（前景与背景）， bbox regression 损失。
+
 * self.fg_bg_sampler: 平衡正负样本，选取 256 个样本，正样本比例为 50% 。遍历每张图像的 matched_idxs ，如果正样本不够就采用所有正样本，如果负样本不够直接采用所有负样本。随机选择指定数量的正负样本 。 sampled_pos_inds 和 sampled_neg_inds 最终存储的是每一个 batch 中的所有正负样本分别拼接到一起。
 * sampled_inds: 将所有正负样本拼接到一起，保存的是一个 batch 中所有正负样本的索引。
 * objectness, labels, regression_targets: 分别保存了一个 batch 中所有的预测类别、类别标签和边界框回归标签。
 * smooth_l1_loss: 计算边界框回归损失
 * binary_cross_entropy_with_logits: 计算目标预测概率损失
-* 函数返回objectness_loss, box_loss，分别是预测类别损失和边界框回归损失。
+* 函数返回 objectness_loss, box_loss ，分别是预测类别损失和边界框回归损失。
 ```
 def compute_loss(self, objectness, pred_bbox_deltas, labels, regression_targets):
     # type: (Tensor, Tensor, List[Tensor], List[Tensor])
