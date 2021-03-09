@@ -418,6 +418,8 @@ def forward(self, images, features, targets=None):
 ```
 
 &#160; &#160; &#160; &#160;遍历每一个预测特征层的 box_cls 和 box_regression ，将每个预测特征层的类别预测和边界框回归预测值全部收集到一起，并 reshape 成 [N, 1] 和 [N, 4] 的形式。 permute_and_flatten 的作用是调整 tensor 顺序，并进行 reshape 。
+
+&#160; &#160; &#160; &#160;这里先疏理一下一个 batch 的数据维度是如何变化的，这里假设 batch_size 的大小是 2 ，那么输入数据的维度为 [2, 3, h, w] ；经过主干特征提取网络后数据的格式变为 [2, 256, f_h, f_w] ，这里需要注意，由于我们使用的是带 FPN 的特征提取网络，所以有多少个特征层就有多少个这样的结构，每个特征层的 f_h 和 f_w 值不同，最后所有层的数据格式存储在链表里；这些特征经过 rpn 网络后，得到的数据格式为 objectness 是 [2, 3, f_h, f_w] ， pred_bbox_deltas 是 [2, 12, f_h, f_w] ，其中 objectness 中的 3 表示 3 个 anchor ，由于 rpn 网络只预测前景和背景，所以是 3x1 ， pred_bbox_deltas 中的 12 表示 3 个 anchor ，每个 anchor 预测 4 个边界框参数，所以是 3x4 ，这里也是每个特征层的 f_h 和 f_w 值不同，所有层的数据格式存储在链表里；
 ```
 def concat_box_prediction_layers(box_cls, box_regression):
     # type: (List[Tensor], List[Tensor])
@@ -465,11 +467,11 @@ def permute_and_flatten(layer, N, A, C, H, W):
 
 &#160; &#160; &#160; &#160;filter_proposals 函数用来筛选预选框。
 * objectness: 对 objectness 进行 reshape 到 (num_images, -1)
-* levels 负责记录分隔不同预测特征层上的 anchors 索引信息，torch.full((n,), idx) 用来生成一个 (n,) 维的张量，每个值都为 idx
+* levels 负责记录选中的预测值在哪个层上，torch.full((n,), idx) 用来生成一个 (n,) 维的张量，每个值都为 idx
 * 将 levels reshape 到 (-1, 1) 并 扩展到与 objectness 相同的形状。
-* self._get_top_n_idx: 获取每张预测特征图上预测概率排前 pre_nms_top_n 的 anchors 索引值。
+* self._get_top_n_idx: 获取每个 batch 上预测概率排前 pre_nms_top_n 的 anchors 索引值，返回的数据形状为 [2, n] 。
 * image_range = torch.arange(num_images, device=device): 根据 batch_size 生成 image_range
-* batch_idx = image_range[:, None]: 对 image_range 升维得到 batch_idx
+* batch_idx = image_range[:, None]: 对 image_range 升维得到 batch_idx ，用于二维数组的索引定位
 * objectness = objectness[batch_idx, top_n_idx]: 根据索引获取每一张图片的类别信息。
 * levels = levels[batch_idx, top_n_idx]: 根据索引获取每一个预测特征图的分割信息。
 * proposals = proposals[batch_idx, top_n_idx]: 根据索引获取每一张图片的边界框回归信息。
