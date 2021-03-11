@@ -661,7 +661,12 @@ def compute_loss(self, objectness, pred_bbox_deltas, labels, regression_targets)
 # 5. 工具类
 &#160; &#160; &#160; &#160;下面介绍下 boxes 文件里的几个工具函数。
 
-&#160; &#160; &#160; &#160;clip_boxes_to_image 函数遍历每一张图片，调整预测的 boxes 信息，将越界的坐标调整到图片边界上，限制 x 坐标范围在 [0,width] 之间；限制 y 坐标范围在 [0,height] 之间
+&#160; &#160; &#160; &#160;clip_boxes_to_image 函数对每一张图片，调整预测的 boxes 信息，将越界的坐标调整到图片边界上，限制 x 坐标范围在 [0,width] 之间；限制 y 坐标范围在 [0,height] 之间
+
+* boxes 的维度是 [N, 4] ， N 是每一张图像生成的候选框的个数
+* boxes[..., 0::2]: 第一维是 [...] 表示取所有的行，第二维表示从 0 开始，步距是 2 ，这样就取到了 x1 和 x2
+* boxes_x.clamp(min=0, max=width): 把 x1 和 x2 限制在 [0-width]
+* 最后两句代码是将 boxes_x 和 boxes_y 恢复到原来的维度
 ```
 def clip_boxes_to_image(boxes, size):
     # type: (Tensor, Tuple[int, int])
@@ -685,6 +690,9 @@ def clip_boxes_to_image(boxes, size):
 ```
 
 &#160; &#160; &#160; &#160;remove_small_boxes 函数移除宽高小于指定阈值的索引。
+
+* ws,hs: 获得预测边界框的宽高
+* 获取宽高是否大于 min_size 的布尔数组
 * nonzero 函数用于得到 tensor 中非零元素的位置，
 ```
 def remove_small_boxes(boxes, min_size):
@@ -708,11 +716,11 @@ def remove_small_boxes(boxes, min_size):
 ```
 
 &#160; &#160; &#160; &#160;batched_nms 函数对每一张图像的每一个预测特征层的边界框进行极大值抑制。
+
 * boxes.max() 获取所有 boxes 中最大的坐标值
 * offsets: 为每一个类别生成一个很大的偏移量， 这里的 to 只是让生成 tensor 的 dytpe 和 device 与 boxes 保持一致。
 * boxes_for_nms: boxes 加上对应层的偏移量后，保证不同类别之间 boxes 不会有重合的现象
 * nms: 极大值抑制
-
 ```
 def batched_nms(boxes, scores, idxs, iou_threshold):
     # type: (Tensor, Tensor, Tensor, float)
@@ -737,7 +745,7 @@ def batched_nms(boxes, scores, idxs, iou_threshold):
     return keep
 ```
 
-&#160; &#160; &#160; &#160;box_iou 函数用来计算两个边界框的交并比。 iou = 边界框的交集 / 别解框的并集。边界框框的交集 = 左上角较大点的坐标与右下角较小点的左边之间的面积；边界框的并集 = 两个边界框的面积和 - 边界框的交集。
+&#160; &#160; &#160; &#160;box_iou 函数用来计算两个边界框的交并比。 iou = 边界框的交集 / 边界框的并集。边界框框的交集 = 左上角较大点的坐标与右下角较小点的左边之间的面积；边界框的并集 = 两个边界框的面积和 - 边界框的交集。
 ```
 def box_iou(boxes1, boxes2):
 
@@ -757,6 +765,7 @@ def box_iou(boxes1, boxes2):
 ```
 
 &#160; &#160; &#160; &#160;下面介绍 det_utils 文件里的函数。
+
 &#160; &#160; &#160; &#160;BalancedPositiveNegativeSampler 类，用来平衡正负样本， init 函数初始化每张图片保留的正负样本总数和正样本所占的比例。
 ```
 def __init__(self, batch_size_per_image, positive_fraction):
@@ -765,7 +774,8 @@ def __init__(self, batch_size_per_image, positive_fraction):
     self.positive_fraction = positive_fraction
 ```
 
-&#160; &#160; &#160; &#160;call 函数在匹配的正负样本集和中选出所需的正负样本，返回两个 mask ，表示选中的位置值为 1 。满足的如下条件：
+&#160; &#160; &#160; &#160;call 函数在匹配的正负样本集合中选出所需的正负样本，返回正样本和负样本对应的 mask ，表示选中的位置值为 1 。满足的如下条件：
+
 * 选择的正负样本数不得超过 self.batch_size_per_image
 * 选择正样本的比例为 self.positive_fraction
 * 如果正样本数量不够就直接采用所有正样本
@@ -821,7 +831,7 @@ def __call__(self, matched_idxs):
 
 &#160; &#160; &#160; &#160;下面介绍 BoxCoder 类，该类用来计算边界框回归参数。
 
-&#160; &#160; &#160; &#160;init 函数初始化 self.weights 和 self.bbox_xform_clip 属性， self.weights 用来设置边界框回归参数的权重，默认是 1 ； self.bbox_xform_clip 用来限制边界框的宽和高为 0 的情况出现，默认取一个最大值。
+&#160; &#160; &#160; &#160;init 函数初始化 self.weights 和 self.bbox_xform_clip 属性， self.weights 用来设置边界框回归参数的权重，默认是 1 ； self.bbox_xform_clip 用来限制 dw 和 dh 的最大值，防止 torch.exp() 值太大。
 ```
 def __init__(self, weights, bbox_xform_clip=math.log(1000. / 16)):
     # type: (Tuple[float, float, float, float], float)
@@ -831,6 +841,8 @@ def __init__(self, weights, bbox_xform_clip=math.log(1000. / 16)):
 ```
 
 &#160; &#160; &#160; &#160;encode 函数用来计算训练回归参数的标签。
+
+* boxes_per_image: 计算每张图片有多少个正负样本 ，后面用来将标签按照每张图片进行分隔
 * 首先将 reference_boxes 和 proposals 两个张量在维度 0 上进行拼接
 * 调用 encode_single 函数计算 reference_boxes 和 proposals 之间的边界框回归参数，作为训练标签
 ```
@@ -863,19 +875,19 @@ def encode_single(self, reference_boxes, proposals):
 
 &#160; &#160; &#160; &#160;边界框回归涉及到两个方面的训练，中心点坐标和宽高的比例。中心点坐标使用平移的方式即可得到；宽高通过尺度的缩放得到。
 
-&#160; &#160; &#160; &#160;公式一：边界框回归参数分别为 dx , dy , dw , dh ， Px ， Py ， Pw ， Ph 分别为候选框的中心坐标以及宽高。 G^x ， G^y ， G^w ， G^h 分别为最终预测的边界框中心坐标以及宽高。得到如下公式：
+&#160; &#160; &#160; &#160;公式一：边界框回归参数分别为 dx , dy , dw , dh ，这四个参数是网络最终输出的边界框的值， Px ， Py ， Pw ， Ph 分别为候选框的中心坐标以及宽高。 G^x ， G^y ， G^w ， G^h 分别为最终预测的边界框中心坐标以及宽高。得到如下公式：
 * G^x = Pw * dx(P)+Px
 * G^y = Ph * dy(P)+Py
 * G^w = Pw * exp(dw(P))
 * G^h = Ph * exp(dh(P))
 
-&#160; &#160; &#160; &#160;公式二：根据上面公式即可计算得到边界框回归参数如下：
+&#160; &#160; &#160; &#160;公式二：根据下面公式即可计算得到边界框回归参数如下：
 * tx = (Gx−Px)/Pw
 * ty = (Gy−Py)/Ph
 * tw = log(Gw/Pw)
 * th = log(Gh/Ph)
 
-&#160; &#160; &#160; &#160;encode_boxes 函数实现了公式二。
+&#160; &#160; &#160; &#160;encode_boxes 函数实现了公式二，计算边界框回归参数的标签值。
 ```
 def encode_boxes(reference_boxes, proposals, weights):
     # type: (torch.Tensor, torch.Tensor, torch.Tensor) -> torch.Tensor
@@ -999,7 +1011,7 @@ def __init__(self, high_threshold, low_threshold, allow_low_quality_matches=Fals
 
 &#160; &#160; &#160; &#160;call 函数对所有 Anchors 划分正负样本和丢弃样本。
 * 计算每一个 Anchors 对应的最大 IOU 的 gt box ，将 IOU 最大值和 anchors 的索引保存到 matched_vals 和 matches 两个变量中。
-* 因为以上可能漏掉某些 gt box ，所以先将 matches 克隆一份，保存到 all_matches 中，进行后续处理
+* allow_low_quality_matches: 是否允许与 gt 有最大 iou 的 anchor 作为正样本，即使 iou 小与 0.3 。默认是 True ，因此以上可能漏掉了某些 gt box ，所以先将 matches 克隆一份，保存到 all_matches 中，进行后续处理
 * 将 IOU < self.low_threshold 的 Anchors 的索引值设为 -1
 * 将 IOU >= self.low_threshold 并且 IOU < self.high_threshold 的 Anchors 的索引值设为 -2
 * 调用 self.set_low_quality_matches_ 函数，计算 gt box 对应 IOU 最大的 Anchors 。
@@ -1037,10 +1049,14 @@ def __call__(self, match_quality_matrix):
     return matches
 ```
 
-&#160; &#160; &#160; &#160;set_low_quality_matches_ 函数，计算每个 gt boxes 寻找与其 iou 最大的 anchor 。
+&#160; &#160; &#160; &#160;set_low_quality_matches_ 函数，计算每个 gt boxes 与其 iou 最大的 anchor 。
+
 * 将最大 IOU 值保存到 highest_quality_foreach_gt 中
 * 寻找每个 gt box 与其 iou 最大的 anchors 的索引，一个 gt 匹配到最大 iou 可能有多个 anchors
 * 将这些 gt 匹配到最大 iou 的 anchors 的索引重新记录到 matches 中。
+* torch.eq: 找到 match_quality_matrix 中 与 gt 有最大的 iou 的 anchor ，得到一个布尔矩阵
+* torch.where: 找到布尔矩阵中为 True 的索引，返回 tuple 类型，第一个元素是行的位置，第二个元素是列的位置
+* 因为这里要找到作为正样本的 anchor ，所以只需要取第二个维度的元素即可。
 ```
 def set_low_quality_matches_(self, matches, all_matches, match_quality_matrix):
 
@@ -1050,13 +1066,11 @@ def set_low_quality_matches_(self, matches, all_matches, match_quality_matrix):
         highest_quality_foreach_gt, _ = match_quality_matrix.max(dim=1)  # the dimension to reduce.
 
         # Find highest quality match available, even if it is low, including ties
-        # 寻找每个gt boxes与其iou最大的anchor索引，一个gt匹配到的最大iou可能有多个anchor
-        gt_pred_pairs_of_highest_quality = torch.nonzero(
-            match_quality_matrix == highest_quality_foreach_gt[:, None]
+        gt_pred_pairs_of_highest_quality = torch.where(
+            torch.eq(match_quality_matrix, highest_quality_foreach_gt[:, None])
         )
 
-        # gt_pred_pairs_of_highest_quality[:, 0]代表是对应的gt index(不需要)
-        pre_inds_to_update = gt_pred_pairs_of_highest_quality[:, 1]
+        pre_inds_to_update = gt_pred_pairs_of_highest_quality[1]
         # 保留该anchor匹配gt最大iou的索引，即使iou低于设定的阈值
         matches[pre_inds_to_update] = all_matches[pre_inds_to_update]
 ```
@@ -1066,7 +1080,7 @@ def set_low_quality_matches_(self, matches, all_matches, match_quality_matrix):
 
 &#160; &#160; &#160; &#160;对于类别损失 pytorch 官方的实现是使用二值交叉熵损失而不是使用论文中描述的多分类交叉熵损失，这也是为什么 RPNHeader 中预测分类目标分数的卷积层 self.cls_logits 输出是 num_anchors 而不是 2*num_anchors 的原因。
 
-&#160; &#160; &#160; &#160;对于边界回归损失使用 smooth_l1 损失。 smooth_l1 损失可以从两个方面限制梯度，当预测框与 ground truth 差别过大时，梯度值不至于过大；当预测框与 ground truth 差别很小时，梯度值足够小。相比于L1损失函数，可以收敛得更快。相比于L2损失函数，对离群点、异常值不敏感，梯度变化相对更小，训练时不容易跑飞。 smooth_l1 函数公式如下图所示：
+&#160; &#160; &#160; &#160;对于边界回归损失使用 smooth_l1 损失。 smooth_l1 损失可以从两个方面限制梯度，当预测框与 ground truth 差别过大时，梯度值不至于过大；当预测框与 ground truth 差别很小时，梯度值足够小。相比于 L1 损失函数，可以收敛得更快。相比于 L2 损失函数，对离群点、异常值不敏感，梯度变化相对更小，训练时不容易跑飞。 smooth_l1 函数公式如下图所示：
 
 ![FPN 网络结构](/img/smoothl1.png)
 

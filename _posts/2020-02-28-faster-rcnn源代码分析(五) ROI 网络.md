@@ -21,15 +21,16 @@ tags:
 
 # 2. ROI 网络结构
 ## 2.1. ROI Align
-&#160; &#160; &#160; &#160;在 Faster RCNN 原论文中使用的 ROI pooling 层对预测特征层进行处理，但 ROI pooling 层在计算的过程中有两次整数化的过程，首先是对 RPN 网络生成的候选框进行取整操作；其次是将整数化后的边界区域平均分割成 k*k 个单元，对每个单元的边界进行整数化。经过上述两次整数化，此时的候选框已经和最开始回归出来的位置有一定的偏差，最终导致预测的精度。
+&#160; &#160; &#160; &#160;在 Faster RCNN 原论文中使用的 ROI pooling 层对预测特征层进行处理，但 ROI pooling 层在计算的过程中有两次整数化的过程，首先是对 RPN 网络生成的候选框进行取整操作；其次是将整数化后的边界区域平均分割成 k*k 个单元，对每个单元的边界进行整数化。经过上述两次整数化，此时的候选框已经和最开始回归出来的位置有一定的偏差，最终导致预测的精度存在较大误差。
 
 &#160; &#160; &#160; &#160;ROI Align 层取消了整数化的过程，使用双线性插值的方法计算坐标为浮点数时的像素值。
 
 &#160; &#160; &#160; &#160;这里还有一个问题，对于原始的 Faster RCNN 网络，只在一个 feature map 上进行预测，对于使用了 FPN 的 backbone 网络，是在多个 featrue map 上进行预测的。那么 ROI Align 层首先需要先计算每一个候选框使用哪个特征层进行预测。我们首先看下代码实现。
 
 &#160; &#160; &#160; &#160; ROI Align 实现在类 MultiScaleRoIAlign 中。
+
 * self.featmap_names: 表示在哪些特征层进行 ROI Align
-* self.sampling_ratio: 采样点，默认是 2 ，对于 7*7 的每一个区域平分 2 份，分一份取中心点位置，中心点坐标采用双线性插值法进行计算，最终取每一份的最大值作为这个区域的像素值
+* self.sampling_ratio: 采样点，默认是 2 ，对于 7*7 的每一个区域平分 2 份，每一份取中心点位置，中心点坐标采用双线性插值法进行计算，最终取每一份的最大值作为这个区域的像素值
 * self.output_size: 候选框分割的大小，默认是 7*7
 * self.scales: 存储每个 feature_map 相对于网络输入 image 的下采样倍率 scale
 * self.map_levels: 存储所有 box 对应的 feature_map
@@ -52,9 +53,10 @@ class MultiScaleRoIAlign(nn.Module):
 ```
 
 &#160; &#160; &#160; &#160;前向传播函数如下。
+
 * x_filtered: 保存参与预测的预测特征层
 * num_levels: 保存参与预测的预测特征层的个数，如果是 1 则直接在该预测特征层上进行预测
-* self.convert_to_roi_format: 将一个批量的所有图像的候选框合并在一起。并在每一张图像的候选框前加以列，标示图像编号。
+* self.convert_to_roi_format: 将一个批量的所有图像的候选框合并在一起。并在每一张图像的候选框前加一列，标示图像编号。
 * self.setup_scales: 计算 self.scales ，每个 feature_map 相对于网络输入 image 的下采样倍率 scale ；
 * 如果网络只使用一个预测特征层，则直接进行调用 roi_align 函数进行预测。
 * levels: 存储每一个预选框对应的预测特征层
@@ -124,6 +126,7 @@ def forward(self, x, boxes, image_shapes):
 ```
 
 &#160; &#160; &#160; &#160;接下来看一下 convert_to_roi_format 函数，该函数是将一个批量图像生成的预选框合并在一起，并在第 1 维度前加上图像的索引。
+
 ```
 def convert_to_roi_format(self, boxes):
     # type: (List[Tensor])
@@ -141,6 +144,7 @@ def convert_to_roi_format(self, boxes):
 ```
 
 &#160; &#160; &#160; &#160;下面介绍生成下采样倍率 scale 的函数，主要是在 infer_scale 函数中。该函数在 setup_scales 中调用。
+
 * 2 ** (feature_size/original_size).log2() = [1/4, 1/8, 1/16, 1/32] ，不是很明白为什么要这么算一下，不绕吗...
 ```
 def infer_scale(self, feature, original_size):
@@ -155,10 +159,12 @@ def infer_scale(self, feature, original_size):
     assert possible_scales[0] == possible_scales[1]
     return possible_scales[0]
 ```
-&#160; &#160; &#160; &#160;setup_scales 函数除了生成下采样倍率外，还初始化了 self.map_levels 变量，改变两用来身成每个预选框在哪个特征层进行预测。
+
+&#160; &#160; &#160; &#160;setup_scales 函数除了生成下采样倍率外，还初始化了 self.map_levels 变量，该变量用来生成每个预选框在哪个特征层进行预测。
+
 * scales: 生成下采样的倍率
 * lvl_min: 根据下采样倍率的最小值生成一个 lvl_min 变量。
-* lvl_max: 根据下采样倍率的最小值生成一个 lvl_max 变量。
+* lvl_max: 根据下采样倍率的最大值生成一个 lvl_max 变量。
 * self.map_levels: 用 lvl_min 和 lvl_max 初始化 initLevelMapper ， lvl_min=2;lvl_max=4
 ```
 def setup_scales(self, features, image_shapes):
@@ -179,14 +185,17 @@ def setup_scales(self, features, image_shapes):
     self.scales = scales
     self.map_levels = initLevelMapper(int(lvl_min), int(lvl_max))
 ```
+
 &#160; &#160; &#160; &#160;下面介绍下，如何将预选框映射到某一个预测特征层：
+
 ```
 def initLevelMapper(k_min, k_max, canonical_scale=224, canonical_level=4, eps=1e-6):
     # type: (int, int, int, int, float)
     return LevelMapper(k_min, k_max, canonical_scale, canonical_level, eps)
 ```
 
-&#160; &#160; &#160; &#160;LevelMapper 类的定义年如下：
+&#160; &#160; &#160; &#160;LevelMapper 类的定义如下：
+
 * self.k_min: 根据下采样倍率的最小值生成一个常量
 * self.k_max: 根据下采样倍率的最大值生成一个常量
 * self.s0: 常量，默认是 224
@@ -202,7 +211,9 @@ class LevelMapper(object):
         self.lvl0 = canonical_level
         self.eps = eps
 ```
+
 &#160; &#160; &#160; &#160;LevelMapper 类的前向传播函数定义如下：
+
 * 将预选框映射到某一个预测特征层公式如下：k = k0 + log2(sqrt(wh)/224)
 * 将得到的 target_lvls 值，通过 clamp 函数控制在 self.k_min 和 self.k_max 之间
 * 最终结果要用 target_lvls - self.k_min
@@ -221,14 +232,16 @@ def __call__(self, boxlists):
     target_lvls = torch.clamp(target_lvls, min=self.k_min, max=self.k_max)
     return (target_lvls.to(torch.int64) - self.k_min).to(torch.int64)
 ```
+
 &#160; &#160; &#160; &#160;至此， MultiScaleRoIAlign 部分就介绍到这里。
 
 ## 2.2. 全链接层
 &#160; &#160; &#160; &#160;经过 ROI Align 层后，将处理结果送入两层全链接层。
 
-&#160; &#160; &#160; &#160;第一层全链接层的输入是 num_channels*7*7 ，输出是 1024 ；第二层全链接层输入是 1024 ，输出也是 1024 。
+&#160; &#160; &#160; &#160;第一层全链接层的输入是 num_channelsx7x7 ，输出是 1024 ；第二层全链接层输入是 1024 ，输出也是 1024 。
 
 &#160; &#160; &#160; &#160;在正向传播过程中，先将 rois 的信息在第一维度上进行展平操作（因为每一个 rois 都要进行预测和边界框回归），然后进行两次全链接层。最终输出 1024 维的特征向量。
+
 ```
 class TwoMLPHead(nn.Module):
 
@@ -250,7 +263,8 @@ class TwoMLPHead(nn.Module):
 ## 2.3. 预测层
 &#160; &#160; &#160; &#160;网络经过两层全链接层的处理后，输出 1024 维的特征向量，将该特征向量输入预测层进行类别的预测和边界框的回归。
 
-&#160; &#160; &#160; &#160;类别预测输出是 num_classes ，边界框回归预测输出是 num_classes * 4 。
+&#160; &#160; &#160; &#160;类别预测输出是 num_classes ，边界框回归预测输出是 num_classesx4 。
+
 ```
 class FastRCNNPredictor(nn.Module):
 
@@ -270,9 +284,12 @@ class FastRCNNPredictor(nn.Module):
 ```
 
 # 3. ROI 网络实现
-&#160; &#160; &#160; &#160;网络实现如下所示：
+&#160; &#160; &#160; &#160;ROI 网络结构如下图所示：
+
+![](/img/fasterrcnn_roi.jpg)
 
 &#160; &#160; &#160; &#160;初始化 ROI Align 网络：
+
 ```
 box_roi_pool = MultiScaleRoIAlign(
             featmap_names=['0', '1', '2', '3'],  # 在哪些特征层进行roi pooling
@@ -280,22 +297,26 @@ box_roi_pool = MultiScaleRoIAlign(
             sampling_ratio=2)
 ```
 &#160; &#160; &#160; &#160;初始化全链接网络：
+
 ```
 resolution = box_roi_pool.output_size[0]  # 默认等于7
-            representation_size = 1024
-            box_head = TwoMLPHead(
-                out_channels * resolution ** 2,
-                representation_size
-            )
+representation_size = 1024
+box_head = TwoMLPHead(
+    out_channels * resolution ** 2,
+    representation_size
+)
 ```
 &#160; &#160; &#160; &#160;初始化预测网络：
+
 ```
 representation_size = 1024
 box_predictor = FastRCNNPredictor(
             representation_size,
             num_classes)
 ```
+
 &#160; &#160; &#160; &#160;创建整个 ROI 网络：
+
 ```
 roi_heads = RoIHeads(
             # box
@@ -307,9 +328,7 @@ roi_heads = RoIHeads(
 ```
 
 &#160; &#160; &#160; &#160;先看 RoIHeads 定义。
-* box_score_thresh=0.05, box_nms_thresh=0.5, box_detections_per_img=100,
-                 box_fg_iou_thresh=0.5, box_bg_iou_thresh=0.5,   # fast rcnn计算误差时，采集正负样本设置的阈值
-                 box_batch_size_per_image=512, box_positive_fraction=0.25,  # fast rcnn计算误差时采样的样本
+
 * fg_iou_thresh 和 bg_iou_thresh: 表示采集正负样本设置的阈值
 * batch_size_per_image 和 positive_fraction: 表示采样的样本数，以及正样本占所有样本的比例
 * score_thresh: 表示要移除低目标概率的值
@@ -361,6 +380,7 @@ class RoIHeads(torch.nn.Module):
         self.detection_per_img = detection_per_img
 ```
 &#160; &#160; &#160; &#160;正向传播函数如下：
+
 * 判断 targets 类型是否正确，如果是训练模式，使用 self.select_training_samples 划分正负样本
 * 调用 self.box_roi_pool 进行 ROI Align
 * 调用 self.box_head 进行全链接层
@@ -418,11 +438,12 @@ def forward(self, features, proposals, image_shapes, targets=None):
     return result, losses
 ```
 &#160; &#160; &#160; &#160;下面看一下正负样本划分函数 self.select_training_samples ，这里的正负样本的划分与 rpn 网络没有本质的区别，只是一些参数上的调整。
+
 * self.add_gt_proposals: 将 gt boxes 与 proposals 预选框进行拼接
 * self.assign_targets_to_proposals: 遍历每张图像，为每个 proposal 匹配对应的 gt box ，并划分到正负样本中
 * self.subsample: 按给定数量和比例采样正负样本
 * 遍历每一张图片，计算正负样本与真实标签的类别损失和边界框回归损失
-* 返回处理后 proposals ， 正负样本对应的索引 matched_idxs ， 正负样本的预测类别 labels ， 以及正负样本的边界框回归参数 regression_targets
+* 返回处理后的 proposals ， 正负样本对应的索引 matched_idxs ， 正负样本的预测类别 labels ， 以及正负样本的边界框回归参数 regression_targets
 ```
 def select_training_samples(self, proposals, targets):
         # type: (List[Tensor], Optional[List[Dict[str, Tensor]]])
@@ -470,7 +491,9 @@ def select_training_samples(self, proposals, targets):
         regression_targets = self.box_coder.encode(matched_gt_boxes, proposals)
         return proposals, matched_idxs, labels, regression_targets
 ```
-&#160; &#160; &#160; &#160;继续看孙是计算函数 fastrcnn_loss 。
+
+&#160; &#160; &#160; &#160;继续看损失计算函数 fastrcnn_loss 。
+
 * 类别损失使用多分类的交叉熵损失函数
 * 边界框回归参数使用 smooth_l1 损失
 ```
@@ -507,7 +530,9 @@ def fastrcnn_loss(class_logits, box_regression, labels, regression_targets):
 
     return classification_loss, box_loss
 ```
+
 &#160; &#160; &#160; &#160;如果是预测模式，调用 postprocess_detections 对预测的类别和边界框进行处理。
+
 * self.box_coder.decode: 根据 proposal 以及预测的回归参数计算出最终 bbox 坐标
 * F.softmax: 对预测类别结果进行 softmax 处理
 * box_ops.clip_boxes_to_image: 裁剪预测的 boxes 信息，将越界的坐标调整到图片边界上
