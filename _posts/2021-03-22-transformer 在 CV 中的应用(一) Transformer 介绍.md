@@ -2,14 +2,14 @@
 layout:     post
 title:      基于 sort 算法的多目标跟踪
 #subtitle:  
-date:       2021-03-09
+date:       2021-03-22
 author:     feizaipp
 header-img: img/post-bg-desk.jpg
 catalog: true
 tags:
     - DeepLeaning
     - AI
-    - Multi Object Tracker
+    - Transformer
 ---
 
 > [我的博客](http://feizaipp.github.io)
