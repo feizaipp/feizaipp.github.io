@@ -20,7 +20,7 @@ tags:
 * [attention-is-all-you-need-pytorch](https://github.com/jadore801120/attention-is-all-you-need-pytorch)
 
 # 1. 概述
-&#160; &#160; &#160; &#160;Transformer 是 Google 的团队在 2017 年提出的一种 NLP 经典模型，经过近几年的发展， Transformer 不仅在 NLP 领域有很好的应用，在 CV 领域也得到了快速发展。最初 Transformer 是为了替换 RNN 网络而出现的，因为 RNN 循环神经网络是顺序模型，时间 t 时刻的计算依赖于时间 t-1 时刻的输出，这限制了模型的并行能力；其次顺序计算的过程中信息会丢失。为了解决上述两个问题， Transformer 使用了 attension 机制，将序列中任意两个位置之间的距离缩小为一个常量。；其次它避免了使用顺序结构，因此具有更好的并行性。
+&#160; &#160; &#160; &#160;Transformer 是 Google 的团队在 2017 年提出的一种 NLP 经典模型，经过近几年的发展， Transformer 不仅在 NLP 领域有很好的应用，在 CV 领域也得到了快速发展。最初 Transformer 是为了替换 RNN 网络而出现的，因为 RNN 循环神经网络是顺序模型，时间 t 时刻的计算依赖于时间 t-1 时刻的输出，这限制了模型的并行能力；其次顺序计算的过程中信息会丢失。为了解决上述两个问题， Transformer 使用了 attention 机制，将序列中任意两个位置之间的距离缩小为一个常量。；其次它避免了使用顺序结构，因此具有更好的并行性。
 
 # 2. Transformer
 &#160; &#160; &#160; &#160;如果把 Transformer 看成一个黑盒的话，那么 Transformer 的结构应该是如下图所示，输入一个句子，输出要翻译的结果。
@@ -36,15 +36,23 @@ tags:
 ![Transformer3](/img/transformer3.png)
 
 # 2.1. 自注意力机制
-&#160; &#160; &#160; &#160;在介绍 Encoder 和 Decoder 之前，我们有必要先来了解一下 Transformer 中的自注意力机制。自注意力机制是 Transformer 最核心的部分。在自注意力机制中有 3 个向量，分别是 Query 、 Key 、 Value ，长度都是 64 。他们是通过 3 个不同的权值矩阵 W 得到，这三个权值矩阵的尺寸都是 512x64 。这三个权值矩阵是网络通过反向传播学习到的。
+&#160; &#160; &#160; &#160;自注意力机制是 Transformer 最核心的部分。在介绍自注意力机制之前，我们有必要先来了解一下注意力机制。
+
+![Attention](/img/attention.jpg)
+
+&#160; &#160; &#160; &#160;如上图所示，在翻译任务中，是将 Source 语言翻译成 Target 语言，将 Source 中的构成元素想象成是由一系列的 <Key,Value> 数据对构成，此时给定 Target 中的某个元素 Query ，通过计算 Query 和各个 Key 的相似性或者相关性，得到每个 Key 对应 Value 的权重系数，然后对 Value 进行加权求和，即得到了最终的 Attention 数值。所以本质上 Attention 机制是对 Source 中元素的 Value 值进行加权求和，而 Query 和 Key 用来计算对应 Value 的权重系数。即可以将其本质思想改写为如下公式：
+
+![Attention](/img/attention1.jpg)
+
+&#160; &#160; &#160; &#160;自注意力机制主要是用来表示句子内的关系，比如句子中有一个单词 'it' ，它指代的上下文中的什么东西。在自注意力机制中有 3 个向量，分别是 Query 、 Key 、 Value ，长度都相同，假如是 512 。他们是输入通过点乘 3 个不同的权值矩阵 W 得到，这三个权值矩阵的尺寸都是 512x512 。这三个权值矩阵是网络通过反向传播学习到的。
 
 &#160; &#160; &#160; &#160;Query 、 Key 、 Value 矩阵的计算示例图如下所示：
 
 ![Transformer4](/img/transformer4.png)
 
-&#160; &#160; &#160; &#160;如上图所示，假如输入两个单词，每个单词的词向量的维度为 [1, 512] ，那么两个单词组成的词向量矩阵维度为 [2, 512] ，用词向量分别乘以三个维度为 [512, 64] 的权值矩阵，就得到维度为 [2, 64] 的三个矩阵，分别是 Query 、 Key 、 Value 矩阵。
+&#160; &#160; &#160; &#160;如上图所示，假如输入两个单词，每个单词的词向量的维度为 [1, 512] ，那么两个单词组成的词向量矩阵维度为 [2, 512] ，用词向量分别乘以三个维度为 [512, 512] 的权值矩阵，就得到维度为 [2, 512] 的三个矩阵，分别是 Query 、 Key 、 Value 矩阵。
 
-&#160; &#160; &#160; &#160;得到 Query(q) 、 Key(k) 、 Value(v) 矩阵后，为每个向量计算 Score ， Score = qk.T 。得到的 Score 的维度为 [2, 2] 。然后对 Score 除以 Query 矩阵维度的平方根后进行 softmax 激活，得到维度为 [2, 2] 的矩阵，最后用该维度为 [2, 2] 矩阵点乘 v 矩阵，得到矩阵 Z ，维度为 [2, 64] 。上述 Score 除以 Query 矩阵维度的平方根是为了防止 qk.T 的数值会随着维度的增大而增大，所以要除以该值，相当于归一化的效果。具体流程如下图所示：
+&#160; &#160; &#160; &#160;得到 Query(q) 、 Key(k) 、 Value(v) 矩阵后，为每个向量计算 Score ， Score = qk.T 。得到的 Score 的维度为 [2, 2] 。然后对 Score 除以 Query 矩阵维度的平方根后进行 softmax 激活，得到维度为 [2, 2] 的矩阵，最后用该维度为 [2, 2] 矩阵点乘 v 矩阵，得到矩阵 Z ，维度为 [2, 512] 。上述 Score 除以 Query 矩阵维度的平方根是为了防止 qk.T 的数值会随着维度的增大而增大，所以要除以该值，相当于归一化的效果。具体流程如下图所示：
 
 ![Transformer5](/img/transformer5.png)
 
@@ -64,7 +72,7 @@ tags:
 
 &#160; &#160; &#160; &#160;下面看自注意力机制的代码实现。我们首先看下自注意力机制的框架图，如下图所示，自注意力机制的实现代码就是对这张图的翻译过程。
 
-![self-attension](/img/self-attension.png)
+![self-attention](/img/self-attension.png)
 
 * self.temperature: 起到归一化作用
 * k.transpose: 将 k 变成 k.T ，由于数据是一个 batch 输入的，所以用 transpose 将 2 和 3 个维度进行交换
@@ -88,12 +96,12 @@ class ScaledDotProductAttention(nn.Module):
         return output, attn
 ```
 
-&#160; &#160; &#160; &#160;Query，Key，Value 的概念取自于信息检索系统，举个简单的搜索的例子来说。当你在某电商平台搜索某件商品（年轻女士冬季穿的红色薄款羽绒服）时，你在搜索引擎上输入的内容便是 Query ，然后搜索引擎根据 Query 为你匹配 Key （例如商品的种类，颜色，描述等），然后根据 Query 和 Key 的相似度得到匹配的内容（Value)。
+&#160; &#160; &#160; &#160;Query，Key，Value 的概念取自于信息检索系统，当你在某电商平台搜索某件商品时，你在搜索引擎上输入的内容便是 Query ，然后搜索引擎根据 Query 为你匹配 Key （例如商品的种类，颜色，描述等），然后根据 Query 和 Key 的相似度得到匹配的内容（Value)。
 
 &#160; &#160; &#160; &#160;self-attention 中的 Q，K，V 也是起着类似的作用，在矩阵计算中，点积是计算两个矩阵相似度的方法之一，因此 qk.T 进行相似度的计算。接着便是根据相似度进行输出的匹配，这里使用了加权匹配的方式，而权值就是 query 与 key 的相似度。
 
 # 2.2. 多头自注意力机制
-&#160; &#160; &#160; &#160;多头自注意力机制就是将 head 个不同自注意力机制集成在一起，假如 head=3 ，则实际上使用 3 组不同的权值矩阵 W 分别计算 3 组 Query 、 Key 、 Value 矩阵，最后得到 3 组不同的 Z 值，将他们在列维度上进行拼接，最后将得到新的特征矩阵送入全链接层得到最终的输出 Z 。计算过程如下图所示：
+&#160; &#160; &#160; &#160;多头自注意力机制，简单理解是词与词之间的关系的产生可能是多种多样的。假如 head=8 ，则实际上使用 8 组不同的权值矩阵 W 分别计算 8 组 Query 、 Key 、 Value 矩阵，最后得到 8 组不同的 Z 值，将他们在列维度上进行拼接，最后将得到新的特征矩阵送入全链接层得到最终的输出 Z 。多头注意力机制实际上时将权值矩阵由 [512, 512] 分成 [512, 8*64] ，最终计算的维度与自注意力机制计算的结果维度是一样的 。计算过程如下图所示：
 
 ![Transformer9](/img/transformer9.png)
 
@@ -126,10 +134,11 @@ class MultiHeadAttention(nn.Module):
 &#160; &#160; &#160; &#160;前向传播函数: 
 
 * residual: 将输入保存，用来计算残差。
-* 计算三个权值矩阵， q k v 。NLP 模型输入的数据维度为 [batch_size, seq_len, input_dim] ，进入全链接层后，输出的维度为 [batch_size, seq_len, output_dim] 。这里又将维度进行了转换，变为 [batch_size, seq_len, n_head, d_k] 。
-* 在通过 transpose 将 q k v 维度变为  [batch_size, n_head, seq_len, d_k]
+* 计算三个权值矩阵， q k v 。NLP 模型输入的数据维度为 [batch_size, seq_len, input_dim] ，其中， seq_len 表示 batch 中每一个序列的长度， input_dim 表示每个序列中的每一个单词的 embedding ，这里的 input_dim 就等于 d_model 。进入全链接层后，输出的维度为 [batch_size, seq_len, output_dim] ，这里的 output_dim 就是 n_head * d_k 。这里又将维度进行了转换，变为 [batch_size, seq_len, n_head, d_k] 。
+* 通过 transpose 将 q k v 维度变为  [batch_size, n_head, seq_len, d_k] ，矩阵 q 和 v 施加注意力机制后得到 Z 矩阵形状为 [batch_size, n_head, seq_len, seq_len] ，得到的矩阵 Z 再与 v 进行点乘，形状变为 [batch_size, n_head, seq_len, d_k] 
 * 通过注意力机制计算 Z ，这里的 Z 存储在 q 中。
-* 将 Z 值的维度在变为输入时的维度，以便进行残差计算
+* 将 Z 值的维度在变为输入时的维度，以便进行残差计算，维度为 [batch_size, seq_len, n_head * d_k]
+* 使用 self.fc 将维度调整到 d_model
 * 最后将计算残差后的值进行 LN 计算。
 ```
 def forward(self, q, k, v, mask=None):
@@ -160,7 +169,7 @@ def forward(self, q, k, v, mask=None):
 
 ![positionembedding](/img/positionembedding.png)
 
-&#160; &#160; &#160; &#160;上式中 pos 表示单词的位置， i 表示单词的维度。准确来说 2i 和 2i + 1 表示单词的维度， i 的去值范围是 [0, d/2] 。作者提到，这样设计是因为 NLP 任务中，除了单词的绝对位置，单词的相对位置也非常重要。根据下图公式可知，任意位置 p+k 都可以被位置 k 的线性函数表示，这为模型捕捉单词之间的相对位置关系提供了非常大的便利。
+&#160; &#160; &#160; &#160;上式中 pos 表示单词的位置， i 表示单词的维度。准确来说 2i 和 2i + 1 表示单词的维度， i 的取值范围是 [0, d/2] 。作者提到，这样设计是因为 NLP 任务中，除了单词的绝对位置，单词的相对位置也非常重要。根据下图公式可知，任意位置 p+k 都可以被位置 k 的线性函数表示，这为模型捕捉单词之间的相对位置关系提供了非常大的便利。
 
 ![positionembedding](/img/positionembedding1.png)
 
@@ -216,14 +225,14 @@ class PositionwiseFeedForward(nn.Module):
 ```
 
 # 2.7. Layer Normolization
-&#160; &#160; &#160; &#160;BN 是取不同样本的同一个通道的特征做归一化； LN 则是取的是同一个样本的不同通道做归一化。 LayerNorm 中不会像 BatchNorm 那样跟踪统计全局的均值方差，因此 train() 和 eval() 对 LayerNorm 没有影响。 LN 和 BN 的区别可以看下图：
+&#160; &#160; &#160; &#160;BN 是取不同样本的同一个通道的特征做归一化， BN 是按照样本数计算归一化统计量的，当样本数很少时，样本的均值和方差不能反映全局的统计分布息，所以基于少量样本的 BN 的效果会变得很差，在一些场景中，比如说硬件资源受限，在线学习等场景， BN 是非常不适用的； LN 则是取的是同一个样本的不同通道做归一化，即根据样本的特征数做归一化。 LayerNorm 中不会像 BatchNorm 那样跟踪统计全局的均值方差，因此 train() 和 eval() 对 LayerNorm 没有影响。 LN 和 BN 的区别可以看下图：
 
 ![LayerNorm](/img/ln.jpg)
 
 &#160; &#160; &#160; &#160;LayerNorm 有三个参数，含义分别是：
-> normalized_shape: 输入尺寸
-> eps: 归一化时加在分母上防止除零
-> elementwise_affine: 如果设为 False ，则 LayerNorm 层不含有任何可学习参数。如果设为 True (默认是 True) 则会包含可学习参数 weight 和 bias ，用于仿射变换，即对输入数据归一化到均值 0 方差 1 后，乘以 weight ，加上 bias 。
+* normalized_shape: 输入尺寸
+* eps: 归一化时加在分母上防止除零
+* elementwise_affine: 如果设为 False ，则 LayerNorm 层不含有任何可学习参数。如果设为 True (默认是 True) 则会包含可学习参数 weight 和 bias ，用于仿射变换，即对输入数据归一化到均值 0 方差 1 后，乘以 weight ，加上 bias 。
 
 # 2.8. Encoder-Decoder 模块
 &#160; &#160; &#160; &#160;了解了上述各个子模块的原理之后， Transformer 整体结构也就掌握了，先贴一张 Transformer 整体框架图，如下图所示，图中左侧方框框起来的是 Encoder ，右侧方框框起来的是 Decoder 。
@@ -232,7 +241,7 @@ class PositionwiseFeedForward(nn.Module):
 
 &#160; &#160; &#160; &#160;这里主要分析下网络的输入和输出，首先看框架图的左侧 Encoder 模块， Encoder 模块的输入就是词向量与位置编码的和。 Encoder 的输出当作 Decoder 输入的一部分进入 Decoder 模块。
 
-&#160; &#160; &#160; &#160;Decoder 的输入包括 2 部分，一部分来自下方，是前一个 time step 的输出，再加上一个表示位置的 Positional Encoding ；另一部分来自 Encoder 的输出，作为中间的 attension 的 key 和 value ，而中间的 attension 的 query 来自第一个 attension 的输出。 Encoder 的输出是对应 i 位置的输出词的概率分布。 Decoder 的解码不是一次把所有序列解出来的，而是像 RNN 一样一个一个解出来的，因为要用上一个位置的输入当作 attention 的 query 。
+&#160; &#160; &#160; &#160;Decoder 的输入包括 2 部分，一部分来自下方，是前一个 timestep 的输出，再加上一个表示位置的 Positional Encoding ；另一部分来自 Encoder 的输出，作为中间的 attention 的 key 和 value ，而中间的 attention 的 query 来自第一个 attention 的输出。 Decoder 的输出是对应 i 位置的输出词的概率分布。 Decoder 的解码不是一次把所有序列解出来的，而是像 RNN 一样一个一个解出来的，因为要用上一个位置的输入当作 attention 的 query 。
 
 &#160; &#160; &#160; &#160;Encoder 代码实现如下：
 
