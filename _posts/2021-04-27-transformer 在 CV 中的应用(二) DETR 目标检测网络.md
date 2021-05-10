@@ -279,6 +279,8 @@ class Joiner(nn.Sequential):
 
 ![detr-transformer](/img/detr_transformer.png)
 
+&#160; &#160; &#160; &#160;下面看 Transformer 的实现。
+
 * d_model=256
 * dim_feedforward=2048
 * normalize_before=False: encoder_norm=None
