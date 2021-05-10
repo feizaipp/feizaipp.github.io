@@ -285,6 +285,7 @@ class Joiner(nn.Sequential):
 * dim_feedforward=2048
 * normalize_before=False: encoder_norm=None
 * return_intermediate_dec=True: 是否保存 Decoder 的中间层用于计算损失， True 表示会保存。
+
 ```
 def build_transformer(args):
     return Transformer(
