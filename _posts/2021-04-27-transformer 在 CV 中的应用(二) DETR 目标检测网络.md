@@ -279,9 +279,21 @@ class Joiner(nn.Sequential):
 
 ![detr-transformer](/img/detr_transformer.png)
 
-
 &#160; &#160; &#160; &#160;下面看 Transformer 的实现。
 
+```
+def build_transformer(args):
+    return Transformer(
+        d_model=args.hidden_dim,
+        dropout=args.dropout,
+        nhead=args.nheads,
+        dim_feedforward=args.dim_feedforward,
+        num_encoder_layers=args.enc_layers,
+        num_decoder_layers=args.dec_layers,
+        normalize_before=args.pre_norm,
+        return_intermediate_dec=True,
+    )
+```
 
 * d_model=256
 * dim_feedforward=2048
