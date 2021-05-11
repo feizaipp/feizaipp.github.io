@@ -281,7 +281,7 @@ class Joiner(nn.Sequential):
 
 &#160; &#160; &#160; &#160;下面看 Transformer 的实现。
 
-* return_intermediate_dec=True: 是否保存 Decoder 的中间层用于计算损失， True 表示会保存。
+* return_intermediate_dec: 是否保存 Decoder 的中间层用于计算损失， True 表示会保存。
 ```
 def build_transformer(args):
     return Transformer(
