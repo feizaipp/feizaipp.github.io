@@ -282,6 +282,7 @@ class Joiner(nn.Sequential):
 
 &#160; &#160; &#160; &#160;下面看 Transformer 的实现。
 
+
 * d_model=256
 * dim_feedforward=2048
 * normalize_before=False
