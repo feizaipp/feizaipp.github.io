@@ -6,8 +6,8 @@
  * Register service worker.
  * ========================================================== */
 
-const PRECACHE = 'precache-v1';
-const RUNTIME = 'runtime';
+const PRECACHE = 'precache-journal-v4-1';
+const RUNTIME = 'runtime-journal-v4-1';
 const HOSTNAME_WHITELIST = [
   self.location.hostname,
   "huangxuan.me",
@@ -106,8 +106,10 @@ self.addEventListener('activate',  event => {
  *  void respondWith(Promise<Response> r);
  */
 self.addEventListener('fetch', event => {
+  // OAuth callbacks must never be stored in the offline cache.
+  if (new URL(event.request.url).searchParams.has('utterances')) return;
   // logs for debugging
-  console.log(`fetch ${event.request.url}`)
+  // Do not log request URLs: sign-in callbacks may contain credentials.
   //console.log(` - type: ${event.request.type}; destination: ${event.request.destination}`)
   //console.log(` - mode: ${event.request.mode}, accept: ${event.request.headers.get('accept')}`)
 
@@ -123,17 +125,20 @@ self.addEventListener('fetch', event => {
     // Stale-while-revalidate 
     // similar to HTTP's stale-while-revalidate: https://www.mnot.net/blog/2007/12/12/stale
     // Upgrade from Jake's to Surma's: https://gist.github.com/surma/eb441223daaedf880801ad80006389f1
-    const cached = caches.match(event.request);
+    const cached = caches.match(event.request, {cacheName: RUNTIME});
     const fixedUrl = getFixedUrl(event.request);
     const fetched = fetch(fixedUrl, {cache: "no-store"});
     const fetchedCopy = fetched.then(resp => resp.clone());
 
-    // Call respondWith() with whatever we get first.
+    // Pages use the network first so new templates replace old comment embeds.
+    // Static assets may use the cached response while they refresh.
     // If the fetch fails (e.g disconnected), wait for the cache.
     // If there’s nothing in cache, wait for the fetch. 
     // If neither yields a response, return offline pages.
     event.respondWith(
-      Promise.race([fetched.catch(_ => cached), cached])
+      (isNavigationReq(event.request)
+        ? fetched.catch(_ => cached)
+        : Promise.race([fetched.catch(_ => cached), cached]))
         .then(resp => resp || fetched)
         .catch(_ => caches.match('offline.html'))
     );

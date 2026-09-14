@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 
 {% include head.html %}
 
@@ -8,7 +8,9 @@
 
     {% include nav.html %}
 
+    {% if page.layout == "default" and page.url != "/" and paginator == nil %}<div id="main-content">{% endif %}
     {{ content }}
+    {% if page.layout == "default" and page.url != "/" and paginator == nil %}</div>{% endif %}
 
     {% include footer.html %}
 

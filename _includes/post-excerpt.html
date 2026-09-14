@@ -1,0 +1,16 @@
+{%- assign summary = include.post.description -%}
+{%- unless summary -%}
+    {%- assign paragraphs = include.post.content | split: '</p>' -%}
+    {%- for paragraph in paragraphs -%}
+        {%- if paragraph contains '<p>' -%}
+            {%- assign candidate = paragraph | split: '<p>' | last | strip_html | replace: '&nbsp;', ' ' | replace: ' ', ' ' | normalize_whitespace | strip -%}
+            {%- assign candidate_size = candidate | size -%}
+            {%- if candidate_size > 70 -%}
+                {%- assign summary = candidate -%}
+                {%- break -%}
+            {%- endif -%}
+        {%- endif -%}
+    {%- endfor -%}
+{%- endunless -%}
+{%- unless summary -%}{%- assign summary = include.post.content | strip_html | normalize_whitespace -%}{%- endunless -%}
+{{- summary | truncate: 145 -}}

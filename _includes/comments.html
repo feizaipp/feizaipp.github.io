@@ -1,0 +1,18 @@
+{% if site.comments.enabled and page.comments != false %}
+{% assign comment_term = page.url | url_decode | prepend: site.baseurl %}
+<section class="article-comments" id="comments" aria-labelledby="comments-heading"
+    data-comments-repo="{{ site.comments.repo | escape }}" data-comments-term="{{ comment_term | escape }}">
+    <div class="comments-heading">
+        <h2 id="comments-heading">评论与讨论</h2>
+        <span>LET’S TALK</span>
+    </div>
+    <p class="comments-description">有问题或新的想法？欢迎交流。使用 GitHub 账号登录后即可留言，支持 Markdown。</p>
+    <div class="comments-feedback">
+        <p class="comments-status" role="status" aria-live="polite">评论将在滚动到这里时加载。</p>
+        <button class="comments-load" type="button">加载评论</button>
+    </div>
+    <div class="comments-mount" aria-busy="false"></div>
+    <p class="comments-fallback"><a href="https://github.com/{{ site.comments.repo }}/issues?q={{ comment_term | url_encode }}">在 GitHub 查看讨论 ↗</a></p>
+    <noscript><p>开启 JavaScript 后可在这里留言，也可以通过上面的链接前往 GitHub。</p></noscript>
+</section>
+{% endif %}

@@ -1,42 +1,41 @@
 ---
-layout: page
-description: "Thinking will not overcome fear but action will."
+layout: default
 ---
-
-{% for post in paginator.posts %}
-<div class="post-preview">
-    <a href="{{ post.url | prepend: site.baseurl }}">
-        <h2 class="post-title">
-            {{ post.title }}
-        </h2>
-        {% if post.subtitle %}
-        <h3 class="post-subtitle">
-            {{ post.subtitle }}
-        </h3>
+<header class="home-hero">
+    <div class="hero-copy">
+        <p class="eyebrow"><span class="status-dot"></span> NOTES ON CODE & CURIOSITY</p>
+        <h1>深入技术，<br>把思考写成<span class="accent-word">积累。</span></h1>
+        <p class="hero-description">从 Linux 底层到深度学习，记录探索、实践与思考。<br class="desktop-break">让每一次钻研，都留下可以回看的笔记。</p>
+        <a class="hero-link" href="#articles">阅读文章 <span aria-hidden="true">↘</span></a>
+    </div>
+    <div class="hero-art" aria-hidden="true">
+        <div class="art-grid"></div><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
+        <div class="code-sheet"><div class="sheet-top"><span></span><span></span><span></span><small>learning.log</small></div><div class="sheet-code"><span class="code-comment">// stay curious. keep building.</span><br><span class="code-orange">while</span> (curiosity) {<br>&nbsp;&nbsp;explore();<br>&nbsp;&nbsp;build();<br>&nbsp;&nbsp;<span class="code-orange">write</span>(experience);<br>}<br><span class="code-cursor">_</span></div></div>
+        <span class="art-label">THINK. BUILD. DOCUMENT.</span><span class="art-plus">+</span>
+    </div>
+    <div class="hero-bottom"><span>一个开发者的知识存档</span><span>LINUX <i>/</i> SECURITY <i>/</i> DEEP LEARNING</span></div>
+</header>
+<main class="home-content" id="main-content">
+    <section class="article-feed" id="articles" aria-labelledby="articles-title">
+        <div class="section-heading"><h2 id="articles-title">文章笔记<span> / JOURNAL</span></h2><span class="article-count">共 {{ site.posts | size }} 篇</span></div>
+        {% for post in paginator.posts %}
+        <article class="journal-entry">
+            <div class="entry-meta"><time datetime="{{ post.date | date: '%Y-%m-%d' }}">{{ post.date | date: '%Y.%m.%d' }}</time><span class="meta-line"></span>{% if post.tags.first %}<a href="{{ site.baseurl }}/tags/#{{ post.tags.first | uri_escape }}">{{ post.tags.first }}</a>{% endif %}</div>
+            <a class="entry-link" href="{{ post.url | prepend: site.baseurl }}"><h3>{{ post.title }}<span class="entry-arrow" aria-hidden="true">↗</span></h3>{% if post.subtitle %}<p class="entry-subtitle">{{ post.subtitle }}</p>{% endif %}<p class="entry-excerpt">{% include post-excerpt.html post=post %}</p></a>
+            <div class="entry-bottom"><div class="entry-tags">{% for tag in post.tags limit:3 %}<a href="{{ site.baseurl }}/tags/#{{ tag | uri_escape }}">{{ tag }}</a>{% endfor %}</div><a class="read-link" href="{{ post.url | prepend: site.baseurl }}" aria-label="阅读全文：{{ post.title | escape }}">阅读全文 <span aria-hidden="true">→</span></a></div>
+        </article>
+        {% endfor %}
+        {% if paginator.total_pages > 1 %}
+        <nav class="journal-pagination" aria-label="文章分页">
+            {% if paginator.previous_page %}<a href="{{ paginator.previous_page_path | prepend: site.baseurl }}">← 上一页</a>{% else %}<span></span>{% endif %}
+            <span>{{ paginator.page }} / {{ paginator.total_pages }}</span>
+            {% if paginator.next_page %}<a href="{{ paginator.next_page_path | prepend: site.baseurl }}">下一页 →</a>{% else %}<span></span>{% endif %}
+        </nav>
         {% endif %}
-        <div class="post-content-preview">
-            {{ post.content | strip_html | truncate:200 }}
-        </div>
-    </a>
-    <p class="post-meta">
-        Posted by {% if post.author %}{{ post.author }}{% else %}{{ site.title }}{% endif %} on {{ post.date | date: "%B %-d, %Y" }}
-    </p>
-</div>
-<hr>
-{% endfor %}
-
-<!-- Pager -->
-{% if paginator.total_pages > 1 %}
-<ul class="pager">
-    {% if paginator.previous_page %}
-    <li class="previous">
-        <a href="{{ paginator.previous_page_path | prepend: site.baseurl | replace: '//', '/' }}">&larr; Newer Posts</a>
-    </li>
-    {% endif %}
-    {% if paginator.next_page %}
-    <li class="next">
-        <a href="{{ paginator.next_page_path | prepend: site.baseurl | replace: '//', '/' }}">Older Posts &rarr;</a>
-    </li>
-    {% endif %}
-</ul>
-{% endif %}
+    </section>
+    <aside class="home-sidebar" aria-label="作者与主题">
+        <section class="author-card"><div class="author-heading"><img src="{{ site.sidebar-avatar | prepend: site.baseurl }}" width="52" height="52" alt="feizaipp 的头像"><div><h2>你好，我是 feizaipp<span>.</span></h2><span class="author-role">开发者 · 技术探索者</span></div></div><p>在代码中寻找答案，<br>在记录中整理思路。</p><a href="{{ site.baseurl }}/about/">更多关于我 <span aria-hidden="true">↗</span></a></section>
+        <section class="topic-section"><div class="sidebar-heading"><h2>探索主题</h2><span>TOPICS</span></div><div class="topic-list">{% assign sorted_tags = site.tags | sort %}{% for tag in sorted_tags %}{% if tag[1].size > 1 %}<a href="{{ site.baseurl }}/tags/#{{ tag[0] | uri_escape }}"><span>{{ tag[0] }}</span><span class="topic-count">{{ tag[1].size }} <i aria-hidden="true">↗</i></span></a>{% endif %}{% endfor %}</div><a class="all-topics" href="{{ site.baseurl }}/tags/">查看全部 {{ site.tags | size }} 个主题 →</a></section>
+        <div class="sidebar-note"><span aria-hidden="true">✳</span><p>保持好奇，持续构建。</p><small>JUST DO IT.</small></div>
+    </aside>
+</main>
