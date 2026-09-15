@@ -8,6 +8,16 @@ LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 jekyll serve
 
 打开 http://localhost:4000。UTF-8 环境用于正确处理中文文件名。
 
+## 构建与依赖
+
+站点直接由 Jekyll 构建，浏览器使用仓库中已有的 CSS 和 JavaScript。旧 Grunt 工具链及其插件已移除，避免引入不再需要的高危构建依赖；`less/` 保留为旧主题源码参考，不参与当前构建。样式修改请编辑 `css/journal.css`。
+
+- `npm run build`：调用已安装的 Jekyll 生成 `_site`。
+- `npm run watch`：启动 Jekyll 开发服务器，监听文件变化。
+- `npm run preview`：在 8020 端口预览已生成的 `_site`。
+- `npm test`：运行测试，需要 Node.js 18 或更新版本，无需安装 npm 第三方依赖。
+- `npm audit`：检查 npm 依赖安全状态；此检查不覆盖 Jekyll 或页面外部服务。
+
 ## 外观维护
 
 - `css/journal.css`：配色、排版，以及桌面和手机样式；无需重新编译 LESS。
