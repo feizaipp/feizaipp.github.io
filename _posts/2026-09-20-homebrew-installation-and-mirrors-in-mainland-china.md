@@ -36,7 +36,37 @@ uname -m
 
 Most current macOS installations use `zsh`. Apple Silicon reports `arm64`; Intel Macs report `x86_64`.
 
-## 2. Install Homebrew with a mirror
+## 2. Install Homebrew
+
+For a normal network connection, install Homebrew with its official installer:
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+The installer asks for your macOS password when it needs to create the default installation directory. It does **not** require `sudo` for normal package installations after setup. Follow the post-installation command it prints to add Homebrew to your shell environment.
+
+On an Apple Silicon Mac with `zsh`, that command is usually:
+
+```bash
+echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
+eval "$(/opt/homebrew/bin/brew shellenv)"
+```
+
+On an Intel Mac, the usual prefix is `/usr/local` instead of `/opt/homebrew`. Always use the command emitted by the installer if it differs.
+
+Confirm that the installation succeeded:
+
+```bash
+brew --version
+brew doctor
+```
+
+`brew doctor` may report optional notices, but it should not report a broken Homebrew installation.
+
+### Install with a mainland China mirror
+
+If the official installer is slow or cannot reach GitHub reliably, use this mirror-based installation instead. Do not run both installation methods.
 
 Set the Git mirror variables in the current terminal first. Homebrew's installer supports these variables for installations where GitHub access is problematic.
 
@@ -62,7 +92,12 @@ echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
 eval "$(/opt/homebrew/bin/brew shellenv)"
 ```
 
-Do not copy the Apple Silicon path to an Intel Mac. Use the command printed by the installer instead.
+Do not copy the Apple Silicon path to an Intel Mac. Use the command printed by the installer instead, then verify the installation:
+
+```bash
+brew --version
+brew doctor
+```
 
 ## 3. Make the download acceleration persistent
 
