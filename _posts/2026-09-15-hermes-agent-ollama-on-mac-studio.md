@@ -1,6 +1,6 @@
 ---
 layout:     post
-title:      Run Hermes Agent with Colima, Ollama, and Metal on a Mac Studio
+title:      Run Hermes Agent with Colima, oMLX, and Metal on a Mac Studio
 subtitle:   A local-first deployment with CPU tools in Colima containers and GPU inference on the host
 date:       2026-09-15
 author:     feizaipp
@@ -8,7 +8,8 @@ header-img: img/post-bg-desk.jpg
 catalog: true
 tags:
     - Hermes Agent
-    - Ollama
+    - oMLX
+    - MLX
     - Colima
     - Docker
     - Apple Silicon
@@ -23,8 +24,8 @@ This deployment deliberately separates performance-sensitive work from untrusted
 
 ```text
 macOS host
-├── Ollama + local models                # Metal / unified memory
-├── Optional MLX, whisper.cpp, ComfyUI   # Metal / host-only GPU tools
+├── oMLX + local MLX models               # Metal / unified memory
+├── Optional whisper.cpp, ComfyUI         # Metal / host-only GPU tools
 └── Colima (Docker-compatible Linux VM)
     └── Hermes Agent container
         ├── Hermes gateway and dashboard
@@ -32,9 +33,9 @@ macOS host
         └── /workspace                    # only project folder intentionally shared with the agent
 ```
 
-Do **not** run Ollama inside Colima on a Mac. Colima runs Linux containers inside a VM and does not provide the normal native Metal execution path. Keep Ollama, MLX, `llama.cpp` compiled with Metal, and other GPU tools on macOS.
+Do **not** run oMLX inside Colima on a Mac. Colima runs Linux containers inside a VM and does not provide the normal native Metal execution path. Keep oMLX, MLX, `llama.cpp` compiled with Metal, and other GPU tools on macOS.
 
-The Hermes container can access host Ollama at `host.docker.internal:11434`. This adds negligible local-network overhead; model loading and inference still happen on the Mac GPU/unified memory.
+The Hermes container can access host oMLX at `host.docker.internal:8000`. This adds negligible local-network overhead; model loading and inference still happen on the Mac GPU/unified memory.
 
 This guide also intentionally does **not** mount the Docker socket into Hermes. A process that can control the Docker daemon can usually escape the practical security boundary of its own container.
 
@@ -52,7 +53,7 @@ Install the lightweight container runtime and a few host-side utilities. `uv` is
 ```bash
 brew install colima docker docker-compose git uv
 
-# A good starting allocation for Hermes and CPU tools. Ollama remains outside
+# A good starting allocation for Hermes and CPU tools. oMLX remains outside
 # this VM and uses the Mac Studio's unified memory directly.
 colima start --cpu 6 --memory 12 --disk 80 --vm-type vz --mount-type virtiofs
 
@@ -62,50 +63,41 @@ docker compose version
 
 The `vz` and `virtiofs` options use Apple's virtualization and fast file-sharing facilities on current macOS releases. If your macOS version does not support them, run `colima start` without those two options. Colima creates a Docker-compatible context automatically, so every `docker compose` command in the rest of this guide is served by Colima.
 
-Install the macOS version of Ollama from the [official download page](https://ollama.com/download/mac), open it once, and then verify its local API:
+Install [oMLX](https://omlx.ai/) for macOS and open it. It is a native MLX inference server and model manager for Apple Silicon. Keep its server bound to the default loopback address, then verify the OpenAI-compatible API:
 
 ```bash
-curl http://127.0.0.1:11434/api/tags
+curl http://127.0.0.1:8000/v1/models
 ```
 
-You should receive JSON, even if the model list is initially empty. Do not change Ollama to listen on your LAN. The default local-only listener is the desired setting.
+You should receive JSON, even if the model list is initially empty. Do not expose oMLX to the LAN; its default `127.0.0.1:8000` listener is the desired setting.
 
 ## 3. Download the first models
 
-For a 128 GB Mac Studio, start with one general model and one coding model instead of downloading everything at once:
+For a 128 GB Mac Studio, start with one general model rather than downloading many models at once. In the oMLX model browser, search for and download:
 
-```bash
-ollama pull qwen3.6
-ollama pull qwen3-coder:30b
+```text
+Qwen3.5-9B-mlx-lm-mxfp4
 ```
 
-Use `qwen3.6` as the initial general-purpose model. Switch Hermes to `qwen3-coder:30b` when working on code repositories. The 480B Qwen3-Coder model is not a sensible local target for 128 GB unified memory; its Ollama page lists a 250 GB minimum for local execution.
+This is the MLX model variant recommended in the Hermes macOS guide. It is a compact starting point; your Mac Studio has enough memory to evaluate larger 27B–35B MLX models later. Use oMLX's model controls to load the model and start its server. Set the served context window to at least **65536 tokens** before connecting Hermes; agent tool schemas and multi-step history need that minimum.
 
-Hermes needs a sufficiently large context window for its system prompt, tool schemas, and multi-step history. Create two local model aliases with a persistent 64K context setting:
-
-```bash
-cat > Modelfile.qwen3.6-hermes <<'EOF'
-FROM qwen3.6
-PARAMETER num_ctx 65536
-EOF
-
-cat > Modelfile.qwen3-coder-hermes <<'EOF'
-FROM qwen3-coder:30b
-PARAMETER num_ctx 65536
-EOF
-
-ollama create qwen3.6-hermes -f Modelfile.qwen3.6-hermes
-ollama create qwen3-coder-hermes -f Modelfile.qwen3-coder-hermes
-```
-
-Then run:
+Verify the loaded model and copy its exact ID. The ID shown by oMLX is the only model name that should be entered in Hermes:
 
 ```bash
-ollama run qwen3.6-hermes "Reply with exactly: Ollama is ready."
-ollama ps
+curl -s http://127.0.0.1:8000/v1/models | jq '.data[].id'
 ```
 
-The `CONTEXT` column should show at least `65536`. The `num_ctx` setting is now carried by the two local aliases, so it remains in effect after restarting the Ollama app. Do not continue until `ollama ps` confirms the intended context size.
+Then run a direct completion test, replacing `MODEL_ID` with the returned ID:
+
+```bash
+curl -s http://127.0.0.1:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "MODEL_ID",
+    "messages": [{"role": "user", "content": "Reply with exactly: oMLX is ready."}],
+    "max_tokens": 50
+  }' | jq '.choices[0].message.content'
+```
 
 ## 4. Create the deployment directory
 
@@ -211,22 +203,21 @@ docker compose run --rm hermes model
 Choose **Custom endpoint (self-hosted / vLLM / etc.)** and enter the following values:
 
 ```text
-API base URL: http://host.docker.internal:11434/v1
-API key: ollama
-Model name: qwen3.6-hermes
+API base URL: http://host.docker.internal:8000/v1
+API key: leave empty unless you enabled one in oMLX
+Model name: the exact ID returned by /v1/models
 Context length: 65536
 ```
 
-`ollama` is only a placeholder API-key value for the OpenAI-compatible client. A standard local Ollama endpoint does not validate it.
+oMLX provides an OpenAI-compatible API. If you configure an API key in oMLX, place that secret in `~/.hermes/.env` and select it in the Hermes wizard instead of storing it in `config.yaml`.
 
 Next, inspect `~/.hermes/config.yaml` and ensure it contains these important settings. Add missing fields; do not remove settings created by the wizard.
 
 ```yaml
 model:
-  default: qwen3.6-hermes
+  default: Qwen3.5-9B-mlx-lm-mxfp4  # replace with the ID returned by oMLX
   provider: custom
-  base_url: http://host.docker.internal:11434/v1
-  api_key: ollama
+  base_url: http://host.docker.internal:8000/v1
   context_length: 65536
 
 # "local" here means the local process namespace of the Hermes container.
@@ -247,13 +238,13 @@ memory:
 
 Do not set `terminal.backend: docker` in this particular design. Hermes is already inside the Colima security container; selecting a nested Docker backend would require access to a Docker daemon, which is exactly the high-privilege Docker socket we intentionally did not mount.
 
-Verify that the container can see Ollama before starting the service:
+Verify that the container can see oMLX before starting the service:
 
 ```bash
-docker compose run --rm hermes curl -s http://host.docker.internal:11434/v1/models
+docker compose run --rm hermes curl -s http://host.docker.internal:8000/v1/models
 ```
 
-If this does not return a JSON model list, stop here and verify that Ollama is running on the host. In Colima, `host.docker.internal` resolves back to the macOS host; `localhost` would refer to the Hermes container itself.
+If this does not return a JSON model list, stop here and verify that oMLX is serving the model on the host. In Colima, `host.docker.internal` resolves back to the macOS host; `localhost` would refer to the Hermes container itself.
 
 ## 6. Start Hermes and validate the installation
 
@@ -283,9 +274,15 @@ The second check proves that Hermes can work in the intended shared workspace. T
 
 For browser automation, enable the browser toolset through `hermes tools` or the dashboard. The preinstalled `agent-browser` avoids an on-demand download, but it is still a CPU/browser workload inside Colima.
 
-## 7. Switching to the coding model
+## 7. Switching models
 
-Keep the normal model as the default, and switch to the coding model for repository work:
+To use another model, download and load it in oMLX first, then query its exact ID:
+
+```bash
+curl -s http://127.0.0.1:8000/v1/models | jq '.data[].id'
+```
+
+Switch Hermes through its model wizard:
 
 ```bash
 docker compose run --rm -it hermes model
@@ -294,15 +291,15 @@ docker compose run --rm -it hermes model
 Choose the same endpoint and enter:
 
 ```text
-Model name: qwen3-coder-hermes
+Model name: the exact ID returned by /v1/models
 Context length: 65536
 ```
 
-You can change it back at any time. Before starting a long coding task, use `ollama ps` on the host to confirm that only the model you intend to use is loaded. Running several large models at once wastes unified memory and can make response latency unpredictable.
+You can change it back at any time. In oMLX, unload models you are not actively using. Keeping several large MLX models loaded wastes unified memory and can make response latency unpredictable.
 
 ## 8. Host-only GPU tools
 
-Ollama is already a host-only GPU tool and Hermes reaches it through its local HTTP API. Treat additional GPU tools the same way:
+oMLX is already a host-only GPU tool and Hermes reaches it through its local HTTP API. Treat additional GPU tools the same way:
 
 * Install MLX Python packages, `llama.cpp` with Metal, `whisper.cpp`, or image-generation software on macOS, not in the Hermes image.
 * Run each tool as a small host-side service bound to `127.0.0.1`.
@@ -541,8 +538,7 @@ cd ~/Services/hermes
 docker compose ps
 docker compose logs -f hermes
 docker compose restart hermes
-ollama list
-ollama ps
+curl -s http://127.0.0.1:8000/v1/models | jq '.data[].id'
 ```
 
 To update Hermes and rebuild the CPU-tools image:
@@ -562,8 +558,8 @@ Finally, keep `approvals.mode: manual` while you are learning how the agent beha
 
 * [Colima documentation](https://colima.run/docs/)
 * [Hermes Agent Docker deployment guide](https://hermes-agent.nousresearch.com/docs/user-guide/docker) (the Docker/Compose commands in this article are provided by Colima)
-* [Hermes Agent: local Ollama provider](https://hermes-agent.nousresearch.com/docs/guides/local-ollama-setup)
+* [Hermes Agent: Run Local LLMs on Mac](https://hermes-agent.nousresearch.com/docs/guides/local-llm-on-mac)
 * [Hermes Agent security configuration](https://hermes-agent.nousresearch.com/docs/user-guide/security)
-* [Ollama model library: Qwen3-Coder](https://ollama.com/library/qwen3-coder)
+* [oMLX](https://omlx.ai/)
 * [whisper.cpp project and Apple Silicon guidance](https://github.com/ggml-org/whisper.cpp)
 * [Homebrew whisper.cpp formula](https://formulae.brew.sh/formula/whisper.cpp)
